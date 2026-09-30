@@ -190,6 +190,53 @@ public struct CodexRateLimitSnapshot: Codable {
     public let credits: CodexCreditsSnapshot?
     public let planType: String?
     public let spendControlReached: Bool?
+    
+    /// Weekly limit window (typically 6-10 days, e.g. 10,080 mins / 7 days for ChatGPT Plus)
+    public var weeklyWindow: CodexRateLimitWindow? {
+        if let p = primary, let mins = p.windowDurationMins, mins >= 6 * 1440 && mins <= 10 * 1440 {
+            return p
+        }
+        if let s = secondary, let mins = s.windowDurationMins, mins >= 6 * 1440 && mins <= 10 * 1440 {
+            return s
+        }
+        return nil
+    }
+    
+    /// Short rolling burst window (typically <= 24 hours, e.g. 5-hour / 300 mins)
+    public var rollingShortWindow: CodexRateLimitWindow? {
+        if let p = primary, let mins = p.windowDurationMins, mins <= 24 * 60 {
+            return p
+        }
+        if let s = secondary, let mins = s.windowDurationMins, mins <= 24 * 60 {
+            return s
+        }
+        return nil
+    }
+    
+    /// All active rate limit windows, ordered with shorter rolling window first followed by weekly/longer window
+    public var allWindows: [(title: String, window: CodexRateLimitWindow)] {
+        var list: [(title: String, window: CodexRateLimitWindow)] = []
+        if let p = primary, let s = secondary {
+            let pMins = p.windowDurationMins ?? 0
+            let sMins = s.windowDurationMins ?? 0
+            
+            let first = pMins <= sMins ? p : s
+            let second = pMins <= sMins ? s : p
+            
+            let firstTitle = first.windowDisplayName
+            var secondTitle = second.windowDisplayName
+            if firstTitle == secondTitle {
+                secondTitle = "Extended Limit"
+            }
+            list.append((title: firstTitle, window: first))
+            list.append((title: secondTitle, window: second))
+        } else if let p = primary {
+            list.append((title: p.windowDisplayName, window: p))
+        } else if let s = secondary {
+            list.append((title: s.windowDisplayName, window: s))
+        }
+        return list
+    }
 }
 
 public struct CodexRateLimitWindow: Codable {
@@ -205,11 +252,31 @@ public struct CodexRateLimitWindow: Codable {
         return Double(remainingPercent) / 100.0
     }
     
+    public var windowDisplayName: String {
+        guard let mins = windowDurationMins else { return "Model Quota" }
+        let days = mins / 1440
+        let hours = mins / 60
+        
+        if days >= 6 && days <= 8 {
+            return "Weekly Limit"
+        } else if days >= 28 && days <= 31 {
+            return "Monthly Limit (30-Day)"
+        } else if days > 1 {
+            return "\(days)-Day Limit"
+        } else if hours > 0 {
+            return "Rolling \(hours)-Hour Limit"
+        } else {
+            return "\(mins)-Minute Limit"
+        }
+    }
+    
     public var formattedDuration: String {
         guard let mins = windowDurationMins else { return "Rolling window" }
         let days = mins / 1440
         let hours = (mins % 1440) / 60
-        if days > 0 {
+        if days >= 6 && days <= 8 {
+            return "7d window"
+        } else if days > 0 {
             return "\(days)d window"
         } else if hours > 0 {
             return "\(hours)h window"

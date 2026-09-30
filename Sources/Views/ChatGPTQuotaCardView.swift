@@ -17,8 +17,8 @@ public struct ChatGPTQuotaCardView: View {
         self.usage = usage
     }
     
-    private var window: CodexRateLimitWindow? {
-        rateLimits?.rateLimits?.primary
+    private var windows: [(title: String, window: CodexRateLimitWindow)] {
+        rateLimits?.rateLimits?.allWindows ?? []
     }
     
     public var body: some View {
@@ -86,15 +86,13 @@ public struct ChatGPTQuotaCardView: View {
                 Spacer()
                 
                 Button(action: {
-                    if let url = URL(string: "https://chatgpt.com") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    openChatGPTApp()
                 }) {
                     HStack(spacing: 5) {
-                        Text("ChatGPT")
+                        Text("Open App")
                             .font(.system(size: 12, weight: .semibold))
-                        Image(systemName: "arrow.up.forward")
-                            .font(.system(size: 10, weight: .bold))
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 10.5, weight: .bold))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 14)
@@ -135,6 +133,7 @@ public struct ChatGPTQuotaCardView: View {
                     .scaleEffect(isWebHovered ? 1.03 : 1.0)
                 }
                 .buttonStyle(.plain)
+                .help("Open ChatGPT desktop app")
                 .onHover { hovering in
                     withAnimation(LiquidGlassTokens.interactiveSpring) {
                         isWebHovered = hovering
@@ -142,7 +141,44 @@ public struct ChatGPTQuotaCardView: View {
                 }
             }
             .padding(14)
-            .liquidGlassCard(cornerRadius: 14, material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: Color(red: 0.12, green: 0.65, blue: 0.45), material: .thinMaterial)
+        }
+    }
+    
+    private func openChatGPTApp() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+        
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat") {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+        
+        let fileManager = FileManager.default
+        let standardPaths = [
+            "/Applications/ChatGPT.app",
+            "\(NSHomeDirectory())/Applications/ChatGPT.app"
+        ]
+        
+        for path in standardPaths {
+            if fileManager.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+                return
+            }
+        }
+        
+        // Fallback to web if desktop app is not installed
+        if let webURL = URL(string: "https://chatgpt.com") {
+            NSWorkspace.shared.open(webURL)
         }
     }
     
@@ -161,55 +197,28 @@ public struct ChatGPTQuotaCardView: View {
             }
             
             VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text("Model Quota")
-                                .font(.system(size: 13.5, weight: .medium))
-                                .foregroundColor(.white)
-                            
-                            if let dur = window?.formattedDuration {
-                                Text("• \(dur)")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.50))
-                            }
+                if !windows.isEmpty {
+                    ForEach(Array(windows.enumerated()), id: \.offset) { index, item in
+                        if index > 0 {
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                                .padding(.horizontal, 14)
                         }
                         
-                        if let resetInfo = window?.formattedResetCountdown {
-                            HStack(spacing: 4) {
-                                Image(systemName: "hourglass")
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.white.opacity(0.40))
-                                Text(resetInfo)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.55))
-                            }
-                        }
-                        
-                        if let used = window?.usedPercent {
-                            Text("\(used)% quota utilized")
-                                .font(.system(size: 10.5))
-                                .foregroundColor(.white.opacity(0.40))
-                        }
+                        quotaRow(title: item.title, window: item.window)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
                     }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 10) {
-                        let remaining = window?.remainingPercent ?? 0
-                        Text("\(remaining)%")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                        
-                        CircularProgressView(
-                            fraction: window?.remainingFraction ?? 0.0,
-                            size: 32,
-                            strokeWidth: 4.0
-                        )
-                    }
+                } else if let window = rateLimits?.rateLimits?.primary {
+                    quotaRow(title: "Model Quota", window: window)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                } else {
+                    Text("No active rate limit data available")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.50))
+                        .padding(14)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
                 
                 // Reset Credits Row (if applicable)
                 if let resetCredits = rateLimits?.rateLimitResetCredits, resetCredits.availableCount > 0 {
@@ -235,7 +244,52 @@ public struct ChatGPTQuotaCardView: View {
                     .padding(.vertical, 10)
                 }
             }
-            .liquidGlassCard(cornerRadius: 14, material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: Color(red: 0.12, green: 0.65, blue: 0.45), material: .thinMaterial)
+        }
+    }
+    
+    private func quotaRow(title: String, window: CodexRateLimitWindow) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundColor(.white)
+                    
+                    Text("• \(window.formattedDuration)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.50))
+                }
+                
+                if let resetInfo = window.formattedResetCountdown {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hourglass")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.white.opacity(0.40))
+                        Text(resetInfo)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.55))
+                    }
+                }
+                
+                Text("\(window.usedPercent)% quota utilized")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.white.opacity(0.40))
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 10) {
+                Text("\(window.remainingPercent)%")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                
+                CircularProgressView(
+                    fraction: window.remainingFraction,
+                    size: 32,
+                    strokeWidth: 4.0
+                )
+            }
         }
     }
     
@@ -296,6 +350,6 @@ public struct ChatGPTQuotaCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .liquidGlassCard(cornerRadius: 10, material: .thinMaterial)
+        .liquidGlassCard(cornerRadius: 12, tint: tintColor, material: .thinMaterial)
     }
 }

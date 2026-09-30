@@ -39,7 +39,7 @@ public struct QuotaCardView: View {
                         .padding(.vertical, 11)
                 }
             }
-            .liquidGlassCard(cornerRadius: 14, material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: Color(red: 0.28, green: 0.52, blue: 0.98), material: .thinMaterial)
         }
     }
 }

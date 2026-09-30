@@ -57,24 +57,25 @@ public struct MainUsageView: View {
                     Color(red: 0.11, green: 0.12, blue: 0.15)
                 } else {
                     ZStack {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
+                        // 1. Native macOS Popover Translucent Blur (Samples desktop wallpaper!)
+                        VisualEffectView(material: .popover, blendingMode: .behindWindow)
                         
-                        // Ambient Liquid Glass Tint Bleed
-                        Color(red: 0.07, green: 0.08, blue: 0.11)
-                            .opacity(colorScheme == .dark ? 0.65 : 0.20)
+                        // 2. Crystal Translucent Ambient Bleed (Preserves full wallpaper visibility!)
+                        Color(red: 0.05, green: 0.06, blue: 0.09)
+                            .opacity(colorScheme == .dark ? 0.22 : 0.03)
                     }
                 }
             }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
-                    LiquidGlassTokens.specularBorder(isDark: colorScheme == .dark, intensity: 0.8),
+                    LiquidGlassTokens.specularBorder(isDark: colorScheme == .dark, intensity: 1.0),
                     lineWidth: 1
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 16, x: 0, y: 8)
     }
     
     // MARK: - Header
@@ -135,42 +136,21 @@ public struct MainUsageView: View {
             HStack(spacing: 5) {
                 Circle()
                     .fill(statusColor)
-                    .frame(width: 6.5, height: 6.5)
+                    .frame(width: 6, height: 6)
                     .shadow(
-                        color: statusColor.opacity(0.60),
+                        color: statusColor.opacity(0.80),
                         radius: 3,
                         x: 0,
                         y: 0
                     )
                 
                 Text(statusText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.70))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.85))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3.5)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(.regularMaterial)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                    )
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.25), location: 0.0),
-                                .init(color: Color.white.opacity(0.04), location: 1.0)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .liquidGlassPill(isProminent: false, tint: statusColor)
             
             Spacer()
             
@@ -185,10 +165,10 @@ public struct MainUsageView: View {
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(service.isLoading ? Color(red: 0.35, green: 0.60, blue: 1.0) : .white.opacity(0.80))
+                        .foregroundColor(service.isLoading ? Color(red: 0.35, green: 0.60, blue: 1.0) : .white.opacity(0.85))
                         .rotationEffect(.degrees(spinAngle))
-                        .frame(width: 26, height: 26)
-                        .liquidGlassButton(cornerRadius: 6)
+                        .frame(width: 28, height: 28)
+                        .liquidGlassButton(cornerRadius: 7, isProminent: false)
                 }
                 .buttonStyle(.plain)
                 .help("Refresh quotas for both providers")
@@ -199,9 +179,9 @@ public struct MainUsageView: View {
                 }) {
                     Image(systemName: "power")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.65))
-                        .frame(width: 26, height: 26)
-                        .liquidGlassButton(cornerRadius: 6)
+                        .foregroundColor(.white.opacity(0.70))
+                        .frame(width: 28, height: 28)
+                        .liquidGlassButton(cornerRadius: 7, isProminent: false)
                 }
                 .buttonStyle(.plain)
                 .help("Quit AIUsage")
@@ -214,7 +194,7 @@ public struct MainUsageView: View {
     // MARK: - Liquid Glass Provider Switcher
     
     private var providerSwitcherBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             providerButton(
                 provider: .gemini,
                 title: "Gemini",
@@ -233,13 +213,13 @@ public struct MainUsageView: View {
                 percentage: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off"
             )
         }
-        .padding(3)
+        .padding(3.5)
         .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color.black.opacity(0.30))
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(Color.black.opacity(0.35))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         )
         .animation(LiquidGlassTokens.stateSpring, value: service.activeProvider)
@@ -254,6 +234,7 @@ public struct MainUsageView: View {
         percentage: String
     ) -> some View {
         let isSelected = service.activeProvider == provider
+        let accentColor: Color = provider == .gemini ? Color(red: 0.28, green: 0.54, blue: 0.98) : Color(red: 0.16, green: 0.74, blue: 0.52)
         
         return Button(action: {
             service.activeProvider = provider
@@ -264,19 +245,17 @@ public struct MainUsageView: View {
                     Image(nsImage: icon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .frame(width: 19, height: 19)
+                        .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
                                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.8)
                         )
                 } else {
                     Image(systemName: provider == .gemini ? "sparkles" : "circle.hexagongrid")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(
-                            isSelected
-                                ? (provider == .gemini ? Color(red: 0.40, green: 0.65, blue: 1.0) : Color(red: 0.20, green: 0.85, blue: 0.60))
-                                : .white.opacity(0.50)
+                            isSelected ? accentColor : .white.opacity(0.50)
                         )
                 }
                 
@@ -289,7 +268,7 @@ public struct MainUsageView: View {
                     
                     Text(subtitle)
                         .font(.system(size: 9.5))
-                        .foregroundColor(.white.opacity(0.40))
+                        .foregroundColor(.white.opacity(0.42))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
@@ -301,30 +280,35 @@ public struct MainUsageView: View {
                     Circle()
                         .fill(isConnected ? (provider == .gemini ? Color(red: 0.25, green: 0.65, blue: 1.0) : Color(red: 0.20, green: 0.85, blue: 0.55)) : Color.orange)
                         .frame(width: 5.5, height: 5.5)
+                        .shadow(color: isConnected ? accentColor.opacity(0.60) : Color.clear, radius: 2, x: 0, y: 0)
                     
                     Text(percentage)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(isSelected ? .white : .white.opacity(0.80))
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.05))
+                        .fill(isSelected ? accentColor.opacity(0.28) : Color.white.opacity(0.06))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(isSelected ? Color.white.opacity(0.35) : Color.white.opacity(0.06), lineWidth: 0.8)
                 )
             }
-            .padding(.horizontal, 8)
-            .frame(height: 36)
+            .padding(.horizontal, 9)
+            .frame(height: 38)
             .frame(maxWidth: .infinity)
             .background(
                 ZStack {
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(.regularMaterial)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(accentColor.opacity(0.12))
                             )
                             .matchedGeometryEffect(id: "activeTabHighlight", in: tabNamespace)
                     }
@@ -333,9 +317,9 @@ public struct MainUsageView: View {
             .overlay(
                 ZStack {
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(
-                                LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.0),
+                                LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.15),
                                 lineWidth: 1
                             )
                             .matchedGeometryEffect(id: "activeTabBorder", in: tabNamespace)

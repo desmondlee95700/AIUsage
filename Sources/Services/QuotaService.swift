@@ -373,16 +373,51 @@ public class QuotaService: ObservableObject {
         primary5hBucket?.percentage ?? geminiPercentage
     }
     
+    public var codexSnapshot: CodexRateLimitSnapshot? {
+        codexRateLimits?.rateLimits
+    }
+    
     public var codexPrimaryWindow: CodexRateLimitWindow? {
-        codexRateLimits?.rateLimits?.primary
+        codexSnapshot?.primary
+    }
+    
+    public var codexSecondaryWindow: CodexRateLimitWindow? {
+        codexSnapshot?.secondary
+    }
+    
+    public var codexWeeklyWindow: CodexRateLimitWindow? {
+        codexSnapshot?.weeklyWindow
+    }
+    
+    public var codex5hWindow: CodexRateLimitWindow? {
+        codexSnapshot?.rollingShortWindow
+    }
+    
+    /// The active window for menu bar display (prioritizes 5h rolling limit, then weekly limit, then primary)
+    public var codexActiveWindow: CodexRateLimitWindow? {
+        if let short = codex5hWindow {
+            return short
+        }
+        if let weekly = codexWeeklyWindow {
+            return weekly
+        }
+        return codexPrimaryWindow ?? codexSecondaryWindow
     }
     
     public var codexRemainingPercentage: Int {
-        codexPrimaryWindow?.remainingPercent ?? 0
+        codexActiveWindow?.remainingPercent ?? 0
+    }
+    
+    public var codexWeeklyPercentage: Int? {
+        codexWeeklyWindow?.remainingPercent
+    }
+    
+    public var codex5hPercentage: Int? {
+        codex5hWindow?.remainingPercent
     }
     
     public var codexUsedPercentage: Int {
-        codexPrimaryWindow?.usedPercent ?? 0
+        codexActiveWindow?.usedPercent ?? 0
     }
     
     // MARK: - Menu Bar Formatter Helpers
@@ -443,8 +478,17 @@ public class QuotaService: ObservableObject {
         if isCodexInstalled {
             if isCodexConnected {
                 let plan = codexAccount?.formattedPlan ?? "Connected"
-                let reset = codexPrimaryWindow?.formattedResetCountdown ?? "Active"
-                lines.append("• ChatGPT: \(codexRemainingPercentage)% remaining (\(plan)) · \(reset)")
+                if let short = codex5hWindow, let weekly = codexWeeklyWindow {
+                    let shortReset = short.formattedResetCountdown ?? "Active"
+                    let weeklyReset = weekly.formattedResetCountdown ?? "Active"
+                    lines.append("• ChatGPT: 5h: \(short.remainingPercent)% (\(shortReset)) · Weekly: \(weekly.remainingPercent)% (\(weeklyReset)) (\(plan))")
+                } else if let active = codexActiveWindow {
+                    let reset = active.formattedResetCountdown ?? "Active"
+                    let desc = active.windowDisplayName
+                    lines.append("• ChatGPT: \(active.remainingPercent)% (\(desc)) remaining (\(plan)) · \(reset)")
+                } else {
+                    lines.append("• ChatGPT: \(codexRemainingPercentage)% remaining (\(plan))")
+                }
             } else {
                 lines.append("• ChatGPT: Offline (Launch ChatGPT.app)")
             }

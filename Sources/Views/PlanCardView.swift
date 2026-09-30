@@ -115,7 +115,7 @@ public struct PlanCardView: View {
                 }
             }
             .padding(14)
-            .liquidGlassCard(cornerRadius: 14, material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: Color(red: 0.28, green: 0.50, blue: 0.96), material: .thinMaterial)
         }
     }
 }
