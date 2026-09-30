@@ -31,30 +31,35 @@ Download the latest pre-compiled macOS disk image:
 
 ## ✨ Features
 
-- **Dual AI Provider Support (Gemini & ChatGPT)**:
-  - **Gemini (Antigravity)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
-  - **ChatGPT (Codex)**: Live quota tracking, 30-day rolling window, reset credits, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
-- **At-A-Glance Dual Status & Awareness**:
-  - **Dual Menu Bar Mode**: Displays both models side-by-side (e.g. `✦ 71% · ✷ 29%`) so you always know both limits at a glance.
-  - **Liquid Glass Provider Switcher**: Prominent top tab bar with live remaining percentage pills (`[ ✦ Gemini 71% ]  [ ✷ ChatGPT 29% ]`) and connection indicators.
-  - **Multi-Model Tooltip**: Hovering over the menu bar item shows a detailed breakdown for both Gemini and ChatGPT.
+- **Tri-Provider AI Support (Antigravity, ChatGPT, Claude)**:
+  - **Antigravity (Google)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
+  - **ChatGPT (OpenAI)**: Live quota tracking, 5-hour burst and weekly limits, reset credit redemption, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
+  - **Claude (Anthropic)**: Native desktop session quota tracking, 5-hour rolling burst and weekly limits, Claude 3.7 Sonnet allocation, and dynamic free tier capacity indicators.
+- **Flexible Multi-Choice Provider Focus**:
+  - Customize your active providers with complete flexibility (Antigravity only, ChatGPT only, Claude only, Antigravity & Claude, ChatGPT & Claude, or All Providers).
+  - **Persistent In-Menu Multi-Select**: Context submenu stays open while toggling multiple checkboxes without premature dismissal.
+  - **In-Popover Provider Filter**: Dedicated `slider.horizontal.3` button in the header bar for instant configuration.
+- **At-A-Glance Status & Awareness**:
+  - **Multi-Provider Menu Bar Display**: Displays metrics for your selected models side-by-side (e.g. `78% · 90% · Free`) with template glyphs.
+  - **Liquid Glass Provider Switcher**: Segmented tab bar dynamically displays only your selected active providers with zero height shift.
+  - **Multi-Model Tooltip**: Hovering over the menu bar item shows a detailed breakdown for all selected providers.
 - **Detailed Quota Breakdown**:
-  - **Gemini Models**: Weekly Limit Remaining & Rolling 5-Hour Limit Remaining with live circular progress rings.
-  - **ChatGPT Codex**: Remaining model quota %, exact countdown to reset, reset credit allowances, and daily token activity.
-  - Dynamic reset countdowns (e.g. *"Fully refreshes in 2 days, 6 hours"*, *"Resets in 11d 15h"*).
+  - **Antigravity Models**: Weekly Limit Remaining & Rolling 5-Hour Limit Remaining with live circular progress rings.
+  - **ChatGPT Models**: 5-hour burst window, weekly window, exact reset countdowns, and reset credit allowances.
+  - **Claude Models**: 5-hour rolling session, weekly quota, dedicated Sonnet quota, and dynamic server capacity limits.
 - **Plan & Account Identity**:
-  - Displays your active logged-in Google / Antigravity and ChatGPT account emails and subscription tiers.
+  - Displays your active logged-in Google, OpenAI, and Anthropic account emails and subscription badges.
 - **macOS 27 Liquid Glass Design**:
   - Translucent refractive substrate (`.ultraThinMaterial` / `.thinMaterial`).
   - Specular rim refraction highlight with continuous bevelled corners.
   - Viscous fluid spring mechanics and auto-expanding popover (no scrollbars).
 - **Zero Token Overhead & Complete Privacy**:
-  - Local loopback Connect-RPC for Gemini; local JSON-RPC stdio for ChatGPT Codex.
+  - Local loopback Connect-RPC for Antigravity; local JSON-RPC stdio for ChatGPT; local desktop session cookies for Claude.
   - Consumes **0 prompt tokens**.
   - No external servers, no third-party telemetry, no credentials stored.
 - **Auto-Discovery & Auto-Reconnection**:
-  - Automatically discovers running instances of Antigravity and ChatGPT Codex.
-  - Seamlessly re-probes and reconnects whenever either application is restarted.
+  - Automatically discovers running instances of Antigravity, ChatGPT.app, and Claude.app.
+  - Seamlessly re-probes and reconnects whenever any application is restarted.
 
 ---
 

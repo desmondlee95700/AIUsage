@@ -16,6 +16,15 @@ public class QuotaService: ObservableObject {
     // Installation Status
     @Published public var isGeminiInstalled: Bool = false
     @Published public var isCodexInstalled: Bool = false
+    @Published public var isClaudeInstalled: Bool = false
+    
+    public var installedProvidersCount: Int {
+        var count = 0
+        if isGeminiInstalled { count += 1 }
+        if isCodexInstalled { count += 1 }
+        if isClaudeInstalled { count += 1 }
+        return count
+    }
     
     // General Status
     @Published public var isLoading: Bool = false
@@ -35,12 +44,18 @@ public class QuotaService: ObservableObject {
     @Published public var codexUsage: CodexUsageSummary? = nil
     @Published public var codexErrorMessage: String? = nil
     
+    // Claude / Anthropic State
+    @Published public var isClaudeConnected: Bool = false
+    @Published public var claudeAccount: ClaudeAccountInfo? = nil
+    @Published public var claudeLimits: ClaudeUsageLimits? = nil
+    @Published public var claudeErrorMessage: String? = nil
+    
     // Backward compatibility property for isConnected (checks current provider)
     public var isConnected: Bool {
         switch activeProvider {
         case .gemini: return isGeminiConnected
         case .chatgpt: return isCodexConnected
-        case .claude: return false
+        case .claude: return isClaudeConnected
         }
     }
     
@@ -48,7 +63,7 @@ public class QuotaService: ObservableObject {
         switch activeProvider {
         case .gemini: return geminiErrorMessage
         case .chatgpt: return codexErrorMessage
-        case .claude: return "Claude (Anthropic) support coming soon."
+        case .claude: return claudeErrorMessage
         }
     }
     
@@ -57,24 +72,117 @@ public class QuotaService: ObservableObject {
     @Published public var resetActionMessage: String? = nil
     @Published public var resetActionIsSuccess: Bool = false
     
-    // Provider Focus Mode (Syncs Popover & Menu Bar)
-    @Published public var providerFocusMode: ProviderFocusMode {
+    // MARK: - Selected Providers (Multi-Choice Provider Focus)
+    @Published public var selectedProviders: Set<AIProvider> {
         didSet {
-            UserDefaults.standard.set(providerFocusMode.rawValue, forKey: "providerFocusMode")
+            let stringArray = selectedProviders.map { $0.rawValue }
+            UserDefaults.standard.set(stringArray, forKey: "selectedProviders")
             updateMenuBarCallback?()
+            onFocusModeChanged?()
         }
     }
     
-    // Active provider within Multi-Provider (Both) view
+    public var selectedInstalledProviders: [AIProvider] {
+        var list: [AIProvider] = []
+        if isGeminiInstalled && selectedProviders.contains(.gemini) { list.append(.gemini) }
+        if isCodexInstalled && selectedProviders.contains(.chatgpt) { list.append(.chatgpt) }
+        if isClaudeInstalled && selectedProviders.contains(.claude) { list.append(.claude) }
+        return list
+    }
+    
+    public var selectedProvidersCount: Int {
+        selectedInstalledProviders.count
+    }
+    
+    public var isAllProvidersSelected: Bool {
+        let installed = installedProvidersCount
+        return installed > 0 && selectedInstalledProviders.count == installed
+    }
+    
+    public func isProviderSelected(_ provider: AIProvider) -> Bool {
+        selectedProviders.contains(provider)
+    }
+    
+    public func toggleProviderSelection(_ provider: AIProvider) {
+        if selectedProviders.contains(provider) {
+            // Keep at least one provider selected
+            if selectedInstalledProviders.count > 1 {
+                selectedProviders.remove(provider)
+                if dualActiveProvider == provider, let first = selectedInstalledProviders.first {
+                    dualActiveProvider = first
+                }
+            }
+        } else {
+            selectedProviders.insert(provider)
+            dualActiveProvider = provider
+        }
+    }
+    
+    public func selectOnlyProvider(_ provider: AIProvider) {
+        selectedProviders = [provider]
+        dualActiveProvider = provider
+    }
+    
+    public func selectAllProviders() {
+        var all = Set<AIProvider>()
+        if isGeminiInstalled { all.insert(.gemini) }
+        if isCodexInstalled { all.insert(.chatgpt) }
+        if isClaudeInstalled { all.insert(.claude) }
+        if !all.isEmpty {
+            selectedProviders = all
+        }
+    }
+    
+    public func isProviderConnected(_ provider: AIProvider) -> Bool {
+        switch provider {
+        case .gemini: return isGeminiConnected
+        case .chatgpt: return isCodexConnected
+        case .claude: return isClaudeConnected
+        }
+    }
+    
+    public var selectedProvidersSummary: String {
+        let list = selectedInstalledProviders
+        if list.isEmpty { return "None" }
+        if list.count == installedProvidersCount && installedProvidersCount > 1 {
+            return "All Providers"
+        }
+        if list.count == 1 {
+            return list[0].fullName
+        }
+        return list.map { $0.displayName }.joined(separator: " · ")
+    }
+    
+    // Provider Focus Mode compatibility bridge
+    public var providerFocusMode: ProviderFocusMode {
+        get {
+            if isAllProvidersSelected {
+                return .both
+            }
+            if selectedInstalledProviders.count == 1, let single = selectedInstalledProviders.first {
+                switch single {
+                case .gemini: return .gemini
+                case .chatgpt: return .chatgpt
+                case .claude: return .claude
+                }
+            }
+            return .both
+        }
+        set {
+            switch newValue {
+            case .both: selectAllProviders()
+            case .gemini: selectOnlyProvider(.gemini)
+            case .chatgpt: selectOnlyProvider(.chatgpt)
+            case .claude: selectOnlyProvider(.claude)
+            }
+        }
+    }
+    
+    // Active provider within Multi-Provider segmented view
     @Published public var dualActiveProvider: AIProvider = .gemini
     
     public func cycleDualActiveProvider() {
-        let activeProviders: [AIProvider] = {
-            var list: [AIProvider] = []
-            if isGeminiInstalled { list.append(.gemini) }
-            if isCodexInstalled { list.append(.chatgpt) }
-            return list
-        }()
+        let activeProviders = selectedInstalledProviders
         guard !activeProviders.isEmpty else { return }
         if let index = activeProviders.firstIndex(of: dualActiveProvider) {
             let nextIndex = (index + 1) % activeProviders.count
@@ -108,17 +216,57 @@ public class QuotaService: ObservableObject {
     public init() {
         let geminiInst = ProcessDiscovery.isAntigravityInstalled
         let codexInst = CodexDiscovery.isCodexInstalled
+        let claudeInst = ClaudeDiscovery.isClaudeInstalled
         self.isGeminiInstalled = geminiInst
         self.isCodexInstalled = codexInst
+        self.isClaudeInstalled = claudeInst
         
         let savedProvider = UserDefaults.standard.string(forKey: "activeProvider")
         var provider = AIProvider(rawValue: savedProvider ?? "") ?? .gemini
-        if !geminiInst && codexInst {
-            provider = .chatgpt
-        } else if geminiInst && !codexInst {
-            provider = .gemini
+        if provider == .gemini && !geminiInst {
+            if codexInst { provider = .chatgpt }
+            else if claudeInst { provider = .claude }
+        } else if provider == .chatgpt && !codexInst {
+            if geminiInst { provider = .gemini }
+            else if claudeInst { provider = .claude }
+        } else if provider == .claude && !claudeInst {
+            if geminiInst { provider = .gemini }
+            else if codexInst { provider = .chatgpt }
         }
         self.activeProvider = provider
+        
+        // Multi-choice selected providers initialization
+        var initialSelected = Set<AIProvider>()
+        if let savedArray = UserDefaults.standard.stringArray(forKey: "selectedProviders"), !savedArray.isEmpty {
+            for raw in savedArray {
+                if let p = AIProvider(rawValue: raw) {
+                    if (p == .gemini && geminiInst) ||
+                       (p == .chatgpt && codexInst) ||
+                       (p == .claude && claudeInst) {
+                        initialSelected.insert(p)
+                    }
+                }
+            }
+        } else {
+            let savedFocus = UserDefaults.standard.string(forKey: "providerFocusMode")
+            if savedFocus == "gemini" && geminiInst {
+                initialSelected.insert(.gemini)
+            } else if savedFocus == "chatgpt" && codexInst {
+                initialSelected.insert(.chatgpt)
+            } else if savedFocus == "claude" && claudeInst {
+                initialSelected.insert(.claude)
+            }
+        }
+        if initialSelected.isEmpty {
+            if geminiInst { initialSelected.insert(.gemini) }
+            if codexInst { initialSelected.insert(.chatgpt) }
+            if claudeInst { initialSelected.insert(.claude) }
+        }
+        self.selectedProviders = initialSelected
+        
+        if let first = initialSelected.first {
+            self.dualActiveProvider = first
+        }
         
         let savedMode = UserDefaults.standard.string(forKey: "menuBarDisplayMode")
         var mode: MenuBarDisplayMode
@@ -131,28 +279,11 @@ public class QuotaService: ObservableObject {
         } else {
             mode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .dual
         }
-        if mode == .dual && (!geminiInst || !codexInst) {
+        let totalInstalled = (geminiInst ? 1 : 0) + (codexInst ? 1 : 0) + (claudeInst ? 1 : 0)
+        if mode == .dual && totalInstalled < 2 {
             mode = .activeProvider
         }
         self.displayMode = mode
-        
-        let savedFocus = UserDefaults.standard.string(forKey: "providerFocusMode")
-        var focus: ProviderFocusMode
-        if let f = ProviderFocusMode(rawValue: savedFocus ?? "") {
-            focus = f
-        } else {
-            if mode == .dual {
-                focus = .both
-            } else if provider == .chatgpt {
-                focus = .chatgpt
-            } else {
-                focus = .gemini
-            }
-        }
-        if focus == .both && (!geminiInst || !codexInst) {
-            focus = codexInst ? .chatgpt : .gemini
-        }
-        self.providerFocusMode = focus
         
         let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
         self.refreshInterval = RefreshInterval(rawValue: savedInterval == 0 ? 60 : savedInterval) ?? .oneMinute
@@ -200,11 +331,13 @@ public class QuotaService: ObservableObject {
         
         let geminiInst = ProcessDiscovery.isAntigravityInstalled
         let codexInst = CodexDiscovery.isCodexInstalled
+        let claudeInst = ClaudeDiscovery.isClaudeInstalled
         
         DispatchQueue.main.async {
             self.isLoading = true
             self.isGeminiInstalled = geminiInst
             self.isCodexInstalled = codexInst
+            self.isClaudeInstalled = claudeInst
         }
         
         let dispatchGroup = DispatchGroup()
@@ -233,6 +366,19 @@ public class QuotaService: ObservableObject {
             DispatchQueue.main.async {
                 self.isCodexConnected = false
                 self.codexErrorMessage = "ChatGPT / Codex is not installed."
+            }
+        }
+        
+        // 3. Refresh Claude (Anthropic) if installed
+        if claudeInst {
+            dispatchGroup.enter()
+            refreshClaude {
+                dispatchGroup.leave()
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.isClaudeConnected = false
+                self.claudeErrorMessage = "Claude is not installed."
             }
         }
         
@@ -325,6 +471,30 @@ public class QuotaService: ObservableObject {
                 case .failure(let err):
                     self.isCodexConnected = false
                     self.codexErrorMessage = err.localizedDescription
+                }
+                completion()
+            }
+        }
+    }
+    
+    // MARK: - Claude / Anthropic Refresh Pipeline
+    
+    private func refreshClaude(completion: @escaping () -> Void) {
+        ClaudeService.shared.fetch { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else {
+                    completion()
+                    return
+                }
+                switch result {
+                case .success(let payload):
+                    self.isClaudeConnected = true
+                    self.claudeAccount = payload.account
+                    self.claudeLimits = payload.limits
+                    self.claudeErrorMessage = nil
+                case .failure(let err):
+                    self.isClaudeConnected = false
+                    self.claudeErrorMessage = err.localizedDescription
                 }
                 completion()
             }
@@ -524,55 +694,52 @@ public class QuotaService: ObservableObject {
         codexActiveWindow?.usedPercent ?? 0
     }
     
+    // MARK: - Claude Helpers
+    
+    public var claudePercentage: Int? {
+        claudeLimits?.fiveHourRemainingPercent ?? claudeLimits?.weeklyRemainingPercent
+    }
+    
+    public var claudeWeeklyPercentage: Int? {
+        claudeLimits?.weeklyRemainingPercent
+    }
+    
+    public var claude5hPercentage: Int? {
+        claudeLimits?.fiveHourRemainingPercent
+    }
+    
     // MARK: - Menu Bar Formatter Helpers
     
     public var menuBarTitle: String {
-        let geminiStr = isGeminiConnected ? "\(geminiPercentage)%" : "Offline"
-        let codexStr = isCodexConnected ? "\(codexRemainingPercentage)%" : "Offline"
+        let providers = selectedInstalledProviders
+        guard !providers.isEmpty else { return " No AI Tools" }
         
-        switch displayMode {
-        case .dual:
-            if !isGeminiInstalled && !isCodexInstalled {
-                return " No AI Tools"
-            }
-            if isGeminiInstalled && !isCodexInstalled {
-                return isGeminiConnected ? " \(geminiStr)" : " Offline"
-            }
-            if !isGeminiInstalled && isCodexInstalled {
-                return isCodexConnected ? " \(codexStr)" : " Offline"
-            }
-            if !isGeminiConnected && !isCodexConnected {
-                return " Offline"
-            }
-            return " \(geminiStr) · \(codexStr)"
-            
-        case .activeProvider:
-            switch activeProvider {
+        if displayMode == .iconOnly { return "" }
+        
+        var parts: [String] = []
+        for p in providers {
+            switch p {
             case .gemini:
-                guard isGeminiInstalled else { return isCodexConnected ? " \(codexStr)" : " Offline" }
-                return isGeminiConnected ? " \(geminiPercentage)%" : " Offline"
+                parts.append(isGeminiConnected ? "\(geminiPercentage)%" : "Off")
             case .chatgpt:
-                guard isCodexInstalled else { return isGeminiConnected ? " \(geminiStr)" : " Offline" }
-                return isCodexConnected ? " \(codexRemainingPercentage)%" : " Offline"
+                parts.append(isCodexConnected ? "\(codexRemainingPercentage)%" : "Off")
             case .claude:
-                return " Claude"
+                if isClaudeConnected {
+                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : "Free")
+                } else {
+                    parts.append("Off")
+                }
             }
-            
-        case .weekly:
-            return isGeminiConnected ? " \(geminiPercentage)%" : " Antigravity Offline"
-            
-        case .iconOnly:
-            return ""
         }
+        return " " + parts.joined(separator: " · ")
     }
     
     public var menuBarTooltip: String {
         var lines: [String] = ["AIUsage \(AppVersion.displayString) — AI Model Quota Tracker"]
         
-        let showGemini = (providerFocusMode == .gemini || providerFocusMode == .both) && isGeminiInstalled
-        let showCodex = (providerFocusMode == .chatgpt || providerFocusMode == .both) && isCodexInstalled
+        let providers = selectedInstalledProviders
         
-        if showGemini {
+        if providers.contains(.gemini) {
             if isGeminiConnected {
                 let tier = userStatus?.userTier?.name ?? "Connected"
                 let bucket = primary5hBucket ?? primaryWeeklyBucket
@@ -584,7 +751,7 @@ public class QuotaService: ObservableObject {
             }
         }
         
-        if showCodex {
+        if providers.contains(.chatgpt) {
             if isCodexConnected {
                 let plan = codexAccount?.formattedPlan ?? "Connected"
                 if let short = codex5hWindow, let weekly = codexWeeklyWindow {
@@ -603,8 +770,23 @@ public class QuotaService: ObservableObject {
             }
         }
         
-        if !isGeminiInstalled && !isCodexInstalled {
-            lines.append("• No supported AI models installed")
+        if providers.contains(.claude) {
+            if isClaudeConnected {
+                let tier = claudeAccount?.formattedTier ?? "Connected"
+                if let limits = claudeLimits {
+                    let fiveH = limits.formattedFiveHourCountdown ?? "Full Quota"
+                    let weekly = limits.formattedWeeklyCountdown ?? "Full Quota"
+                    lines.append("• Claude (Anthropic): 5h: \(limits.fiveHourRemainingPercent)% (\(fiveH)) · Weekly: \(limits.weeklyRemainingPercent)% (\(weekly)) (\(tier))")
+                } else {
+                    lines.append("• Claude (Anthropic): Dynamic Free Tier (\(tier))")
+                }
+            } else {
+                lines.append("• Claude (Anthropic): Offline (Launch Claude.app)")
+            }
+        }
+        
+        if providers.isEmpty {
+            lines.append("• No AI providers selected")
         } else {
             lines.append("Click to switch views or right-click for quick actions")
         }
@@ -612,16 +794,21 @@ public class QuotaService: ObservableObject {
     }
     
     public var statusTintColor: NSColor {
-        // Evaluate the active provider or lowest remaining percentage
-        let activePercent = activeProvider == .gemini ? (isGeminiConnected ? geminiPercentage : nil) : (isCodexConnected ? codexRemainingPercentage : nil)
+        let activePercentages: [Int] = selectedInstalledProviders.compactMap { provider in
+            switch provider {
+            case .gemini: return isGeminiConnected ? geminiPercentage : nil
+            case .chatgpt: return isCodexConnected ? codexRemainingPercentage : nil
+            case .claude: return isClaudeConnected ? (claudePercentage ?? 100) : nil
+            }
+        }
         
-        guard let pct = activePercent else {
+        guard let minPct = activePercentages.min() else {
             return .secondaryLabelColor
         }
         
-        if pct >= 50 {
+        if minPct >= 50 {
             return NSColor(red: 0.13, green: 0.77, blue: 0.36, alpha: 1.0) // Green #22c55e
-        } else if pct >= 20 {
+        } else if minPct >= 20 {
             return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 1.0) // Orange #f59e0b
         } else {
             return NSColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1.0) // Red #ef4444

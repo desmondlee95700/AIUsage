@@ -65,7 +65,7 @@ public enum ProviderFocusMode: String, CaseIterable, Codable, Identifiable {
         case .gemini: return "Antigravity (Google)"
         case .chatgpt: return "ChatGPT (OpenAI)"
         case .claude: return "Claude (Anthropic)"
-        case .both: return "Both (Antigravity & ChatGPT)"
+        case .both: return "All Providers"
         }
     }
     
@@ -74,7 +74,7 @@ public enum ProviderFocusMode: String, CaseIterable, Codable, Identifiable {
         case .gemini: return "Antigravity"
         case .chatgpt: return "ChatGPT"
         case .claude: return "Claude"
-        case .both: return "Both"
+        case .both: return "All"
         }
     }
 }
@@ -526,6 +526,155 @@ public enum RefreshInterval: Int, CaseIterable, Codable {
         case .twoMinutes: return "Every 2 minutes"
         case .fiveMinutes: return "Every 5 minutes"
         case .manual: return "Manual only"
+        }
+    }
+}
+
+// MARK: - Claude Models (Anthropic)
+
+public struct ClaudeAccountInfo: Codable, Equatable {
+    public let accountUuid: String?
+    public let emailAddress: String?
+    public let displayName: String?
+    public let organizationUuid: String?
+    public let organizationType: String?
+    public let billingType: String?
+    public let hasExtraUsageEnabled: Bool?
+    public let organizationRateLimitTier: String?
+    public let subscriptionCreatedAt: String?
+    
+    public init(
+        accountUuid: String? = nil,
+        emailAddress: String? = nil,
+        displayName: String? = nil,
+        organizationUuid: String? = nil,
+        organizationType: String? = nil,
+        billingType: String? = nil,
+        hasExtraUsageEnabled: Bool? = nil,
+        organizationRateLimitTier: String? = nil,
+        subscriptionCreatedAt: String? = nil
+    ) {
+        self.accountUuid = accountUuid
+        self.emailAddress = emailAddress
+        self.displayName = displayName
+        self.organizationUuid = organizationUuid
+        self.organizationType = organizationType
+        self.billingType = billingType
+        self.hasExtraUsageEnabled = hasExtraUsageEnabled
+        self.organizationRateLimitTier = organizationRateLimitTier
+        self.subscriptionCreatedAt = subscriptionCreatedAt
+    }
+    
+    public var formattedTier: String {
+        guard let type = organizationType?.lowercased() else {
+            return "Claude Free"
+        }
+        switch type {
+        case "claude_pro", "pro":
+            return "Claude Pro"
+        case "claude_max", "max":
+            return "Claude Max"
+        case "raven":
+            return "Claude Team"
+        case "enterprise":
+            return "Claude Enterprise"
+        case "free":
+            return "Claude Free"
+        default:
+            return "Claude (\(type.capitalized))"
+        }
+    }
+    
+    public var tierBadge: String {
+        guard let type = organizationType?.lowercased() else {
+            return "Free"
+        }
+        switch type {
+        case "claude_pro", "pro": return "Pro"
+        case "claude_max", "max": return "Max"
+        case "raven": return "Team"
+        case "enterprise": return "Enterprise"
+        default: return "Free"
+        }
+    }
+    
+    /// Checks which Claude tier has access to dedicated usage limits tracking
+    public var canSeeUsageLimits: Bool {
+        guard let type = organizationType?.lowercased() else { return false }
+        return type == "claude_pro" || type == "pro" || type == "raven" || type == "claude_max" || type == "enterprise"
+    }
+    
+    public var tierDescription: String {
+        if canSeeUsageLimits {
+            return "Includes dedicated 5-hour rolling session and weekly model quota tracking."
+        } else {
+            return "Free tier has dynamic server-capacity cooldowns. Upgrade to Claude Pro for full quota limits."
+        }
+    }
+}
+
+public struct ClaudeUsageLimits: Codable, Equatable {
+    public let fiveHourRemainingPercent: Int
+    public let fiveHourUsedPercent: Int
+    public let fiveHourResetTime: Date?
+    
+    public let weeklyRemainingPercent: Int
+    public let weeklyUsedPercent: Int
+    public let weeklyResetTime: Date?
+    
+    public let sonnetRemainingPercent: Int?
+    public let opusRemainingPercent: Int?
+    public let extraUsagePercent: Int?
+    
+    public let lastUpdated: Date?
+    
+    public init(
+        fiveHourRemainingPercent: Int,
+        fiveHourUsedPercent: Int,
+        fiveHourResetTime: Date? = nil,
+        weeklyRemainingPercent: Int,
+        weeklyUsedPercent: Int,
+        weeklyResetTime: Date? = nil,
+        sonnetRemainingPercent: Int? = nil,
+        opusRemainingPercent: Int? = nil,
+        extraUsagePercent: Int? = nil,
+        lastUpdated: Date? = nil
+    ) {
+        self.fiveHourRemainingPercent = fiveHourRemainingPercent
+        self.fiveHourUsedPercent = fiveHourUsedPercent
+        self.fiveHourResetTime = fiveHourResetTime
+        self.weeklyRemainingPercent = weeklyRemainingPercent
+        self.weeklyUsedPercent = weeklyUsedPercent
+        self.weeklyResetTime = weeklyResetTime
+        self.sonnetRemainingPercent = sonnetRemainingPercent
+        self.opusRemainingPercent = opusRemainingPercent
+        self.extraUsagePercent = extraUsagePercent
+        self.lastUpdated = lastUpdated
+    }
+    
+    public var formattedFiveHourCountdown: String? {
+        guard let reset = fiveHourResetTime else { return "Rolling 5h window" }
+        let diff = reset.timeIntervalSince(Date())
+        if diff <= 0 { return "Fully refreshed" }
+        let hours = Int(diff) / 3600
+        let minutes = (Int(diff) % 3600) / 60
+        if hours > 0 {
+            return "Resets in \(hours)h \(minutes)m"
+        } else {
+            return "Resets in \(minutes)m"
+        }
+    }
+    
+    public var formattedWeeklyCountdown: String? {
+        guard let reset = weeklyResetTime else { return "Weekly reset" }
+        let diff = reset.timeIntervalSince(Date())
+        if diff <= 0 { return "Refreshed" }
+        let days = Int(diff) / 86400
+        let hours = (Int(diff) % 86400) / 3600
+        if days > 0 {
+            return "Resets in \(days)d \(hours)h"
+        } else {
+            return "Resets in \(hours)h"
         }
     }
 }

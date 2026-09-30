@@ -3,6 +3,7 @@ import SwiftUI
 public struct MainUsageView: View {
     @ObservedObject var service: QuotaService
     @State private var spinAngle: Double = 0.0
+    @State private var isShowingProviderFocusPopover: Bool = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
@@ -21,8 +22,8 @@ public struct MainUsageView: View {
             Divider()
                 .background(Color.white.opacity(0.06))
 
-            // Multi-Provider Flipping Switcher (ONLY shown when Both / >1 provider is selected)
-            if service.providerFocusMode == .both && (service.isGeminiInstalled && service.isCodexInstalled) {
+            // Multi-Provider Flipping Switcher (ONLY shown when > 1 provider is selected)
+            if service.selectedInstalledProviders.count > 1 {
                 multiProviderSwitcherBar
 
                 Divider()
@@ -31,66 +32,31 @@ public struct MainUsageView: View {
 
             // Fixed-Height Content Container (ZERO height shift, ZERO flicker)
             ZStack(alignment: .top) {
-                if !service.isGeminiInstalled && !service.isCodexInstalled {
+                if service.selectedInstalledProviders.isEmpty {
                     noToolsInstalledView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if service.isGeminiInstalled && !service.isCodexInstalled {
+                } else if service.selectedInstalledProviders.count == 1 {
                     ScrollView(.vertical, showsIndicators: false) {
-                        if service.isGeminiConnected {
-                            geminiContentView
-                        } else {
-                            geminiOfflineView
+                        switch service.selectedInstalledProviders[0] {
+                        case .gemini:
+                            geminiView
+                        case .chatgpt:
+                            chatgptView
+                        case .claude:
+                            claudeView
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if !service.isGeminiInstalled && service.isCodexInstalled {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        if service.isCodexConnected {
-                            chatgptContentView
-                        } else {
-                            chatgptOfflineView
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
                 } else {
-                    switch service.providerFocusMode {
-                    case .gemini:
-                        ScrollView(.vertical, showsIndicators: false) {
-                            if service.isGeminiConnected {
-                                geminiContentView
-                            } else {
-                                geminiOfflineView
-                            }
-                        }
+                    dualFlippingContentView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.opacity)
-                        
-                    case .chatgpt:
-                        ScrollView(.vertical, showsIndicators: false) {
-                            if service.isCodexConnected {
-                                chatgptContentView
-                            } else {
-                                chatgptOfflineView
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(.opacity)
-                        
-                    case .claude:
-                        claudePlaceholderView
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.opacity)
-                            
-                    case .both:
-                        dualFlippingContentView
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.opacity)
-                    }
                 }
             }
             .frame(height: 440)
             .clipped()
-            .animation(.easeInOut(duration: 0.12), value: service.providerFocusMode)
+            .animation(.easeInOut(duration: 0.12), value: service.selectedProviders)
             .animation(.easeInOut(duration: 0.20), value: service.dualActiveProvider)
         }
         .frame(width: 380)
@@ -178,21 +144,11 @@ public struct MainUsageView: View {
             
             // Connection Status Pill
             let (statusText, statusColor): (String, Color) = {
-                if !service.isGeminiInstalled && !service.isCodexInstalled {
+                let selected = service.selectedInstalledProviders
+                if selected.isEmpty {
                     return ("No Tools", Color.gray)
                 }
-                let live: Bool = {
-                    switch service.providerFocusMode {
-                    case .gemini:
-                        return service.isGeminiConnected
-                    case .chatgpt:
-                        return service.isCodexConnected
-                    case .claude:
-                        return false
-                    case .both:
-                        return service.isGeminiConnected || service.isCodexConnected
-                    }
-                }()
+                let live = selected.contains { service.isProviderConnected($0) }
                 return (live ? "Live" : "Offline", live ? Color(red: 0.20, green: 0.84, blue: 0.50) : Color.orange)
             }()
             
@@ -219,6 +175,27 @@ public struct MainUsageView: View {
             
             // Action Buttons
             HStack(spacing: 6) {
+                // Provider Focus Multi-Select Filter Button
+                if service.installedProvidersCount > 1 {
+                    Button(action: {
+                        isShowingProviderFocusPopover.toggle()
+                    }) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(isShowingProviderFocusPopover ? Color(red: 0.35, green: 0.60, blue: 1.0) : .white.opacity(0.85))
+                            .frame(width: 28, height: 28)
+                            .liquidGlassButton(cornerRadius: 7, isProminent: false)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Select active AI providers (Multi-Choice)")
+                    .popover(isPresented: $isShowingProviderFocusPopover, arrowEdge: .bottom) {
+                        ProviderFocusSubmenuView(service: service, onDismiss: {
+                            isShowingProviderFocusPopover = false
+                        })
+                        .padding(4)
+                    }
+                }
+                
                 // Refresh Button
                 Button(action: {
                     withAnimation(LiquidGlassTokens.interactiveSpring) {
@@ -276,42 +253,64 @@ public struct MainUsageView: View {
         }
     }
     
-    // MARK: - Multi-Provider Flipping Switcher Bar
+    @ViewBuilder
+    private var claudeView: some View {
+        if service.isClaudeConnected {
+            claudeContentView
+        } else {
+            claudeOfflineView
+                .frame(minHeight: 320)
+        }
+    }
     
     // MARK: - Multi-Provider Flipping Switcher Bar
     
     private var multiProviderSwitcherBar: some View {
         HStack(spacing: 5) {
-            dualProviderTabButton(
-                provider: .gemini,
-                title: "Antigravity",
-                subtitle: "Google",
-                icon: AppIconHelper.antigravityIcon,
-                systemFallback: "sparkles",
-                badge: service.isGeminiConnected ? "\(service.geminiPercentage)%" : "Off",
-                accentColor: Color(red: 0.28, green: 0.54, blue: 0.98)
-            )
+            if service.selectedInstalledProviders.contains(.gemini) {
+                dualProviderTabButton(
+                    provider: .gemini,
+                    title: "Antigravity",
+                    subtitle: "Google",
+                    icon: AppIconHelper.antigravityIcon,
+                    systemFallback: "sparkles",
+                    badge: service.isGeminiConnected ? "\(service.geminiPercentage)%" : "Off",
+                    accentColor: Color(red: 0.28, green: 0.54, blue: 0.98)
+                )
+            }
             
-            dualProviderTabButton(
-                provider: .chatgpt,
-                title: "ChatGPT",
-                subtitle: "OpenAI",
-                icon: AppIconHelper.chatgptIcon,
-                systemFallback: "circle.hexagongrid",
-                badge: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off",
-                accentColor: Color(red: 0.16, green: 0.74, blue: 0.52)
-            )
+            if service.selectedInstalledProviders.contains(.chatgpt) {
+                dualProviderTabButton(
+                    provider: .chatgpt,
+                    title: "ChatGPT",
+                    subtitle: "OpenAI",
+                    icon: AppIconHelper.chatgptIcon,
+                    systemFallback: "circle.hexagongrid",
+                    badge: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off",
+                    accentColor: Color(red: 0.16, green: 0.74, blue: 0.52)
+                )
+            }
             
-            dualProviderTabButton(
-                provider: .claude,
-                title: "Claude",
-                subtitle: "Anthropic",
-                icon: nil,
-                systemFallback: "asterisk",
-                badge: "Soon",
-                accentColor: Color(red: 0.85, green: 0.45, blue: 0.25),
-                isDisabled: true
-            )
+            if service.selectedInstalledProviders.contains(.claude) {
+                let badgeText: String = {
+                    guard service.isClaudeConnected else { return "Off" }
+                    if let pct = service.claudePercentage {
+                        return "\(pct)%"
+                    } else {
+                        return "Free"
+                    }
+                }()
+                dualProviderTabButton(
+                    provider: .claude,
+                    title: "Claude",
+                    subtitle: "Anthropic",
+                    icon: AppIconHelper.claudeIcon,
+                    systemFallback: "asterisk",
+                    badge: badgeText,
+                    accentColor: Color(red: 0.85, green: 0.45, blue: 0.25),
+                    isDisabled: false
+                )
+            }
         }
         .padding(3)
         .background(
@@ -420,21 +419,13 @@ public struct MainUsageView: View {
             Group {
                 switch service.dualActiveProvider {
                 case .gemini:
-                    if service.isGeminiConnected {
-                        geminiContentView
-                    } else {
-                        geminiOfflineView
-                    }
+                    geminiView
                     
                 case .chatgpt:
-                    if service.isCodexConnected {
-                        chatgptContentView
-                    } else {
-                        chatgptOfflineView
-                    }
+                    chatgptView
                     
                 case .claude:
-                    claudePlaceholderView
+                    claudeView
                 }
             }
             .transition(.asymmetric(
@@ -445,9 +436,18 @@ public struct MainUsageView: View {
         }
     }
     
-    // MARK: - Claude Future Integration View
+    // MARK: - Claude Views
     
-    private var claudePlaceholderView: some View {
+    private var claudeContentView: some View {
+        ClaudeQuotaCardView(
+            account: service.claudeAccount,
+            limits: service.claudeLimits,
+            service: service
+        )
+        .padding(14)
+    }
+    
+    private var claudeOfflineView: some View {
         VStack(spacing: 14) {
             ZStack {
                 Circle()
@@ -459,22 +459,53 @@ public struct MainUsageView: View {
                     )
                     .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
                 
-                Image(systemName: "asterisk")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.25))
+                if let icon = AppIconHelper.claudeIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Image(systemName: "asterisk")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.25))
+                }
             }
             
             VStack(spacing: 5) {
-                Text("Claude (Anthropic) Coming Soon")
+                Text("Claude (Anthropic) Disconnected")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 
-                Text("Anthropic Claude quota and rate-limit tracking will be available in an upcoming update.")
+                Text(service.claudeErrorMessage ?? "Claude desktop app or local session not detected. Launch Claude to view real-time quota telemetry.")
                     .font(.system(size: 11.5))
                     .foregroundColor(.white.opacity(0.60))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
+            
+            Button(action: {
+                ClaudeDiscovery.launchClaudeApp()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Launch Claude")
+                        .font(.system(size: 12.5, weight: .medium))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color(red: 0.85, green: 0.45, blue: 0.25).opacity(0.25))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color(red: 0.85, green: 0.45, blue: 0.25).opacity(0.50), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 36)
         .frame(maxWidth: .infinity)

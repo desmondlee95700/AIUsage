@@ -49,6 +49,12 @@ public enum AppIconHelper {
         return image
     }()
     
+    public static var claudeIcon: NSImage? = {
+        guard let image = loadAsset(named: "ClaudeIcon", ofType: "png") else { return nil }
+        image.size = NSSize(width: 32, height: 32)
+        return image
+    }()
+    
     public static var antigravityTemplate: NSImage? = {
         if let image = loadAsset(named: "AntigravityTemplate@2x", ofType: "png") ?? loadAsset(named: "AntigravityTemplate", ofType: "png") {
             image.size = NSSize(width: 14, height: 14)
@@ -60,6 +66,15 @@ public enum AppIconHelper {
     
     public static var chatgptTemplate: NSImage? = {
         if let image = loadAsset(named: "ChatGPTTemplate@2x", ofType: "png") ?? loadAsset(named: "ChatGPTTemplate", ofType: "png") {
+            image.size = NSSize(width: 14, height: 14)
+            image.isTemplate = true
+            return image
+        }
+        return nil
+    }()
+    
+    public static var claudeTemplate: NSImage? = {
+        if let image = loadAsset(named: "ClaudeTemplate@2x", ofType: "png") ?? loadAsset(named: "ClaudeTemplate", ofType: "png") {
             image.size = NSSize(width: 14, height: 14)
             image.isTemplate = true
             return image
