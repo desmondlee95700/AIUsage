@@ -81,11 +81,12 @@ public enum LiquidGlassTokens {
 public struct LiquidGlassCardModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    
+    @EnvironmentObject private var glassObserver: LiquidGlassObserver
+
     public var cornerRadius: CGFloat
     public var tint: Color?
     public var material: Material?
-    
+
     public init(
         cornerRadius: CGFloat = 16,
         tint: Color? = nil,
@@ -95,45 +96,52 @@ public struct LiquidGlassCardModifier: ViewModifier {
         self.tint = tint
         self.material = material
     }
-    
+
     public func body(content: Content) -> some View {
         let isDark = colorScheme == .dark
-        
+        // Scale glass depth 0.0 (flat) → 1.0 (full refraction) from system slider
+        let glassIntensity = reduceTransparency ? 0.0 : glassObserver.intensity
+        let isGlassOn = glassIntensity > 0.05
+
         content
             .background(
                 Group {
-                    if reduceTransparency {
+                    if !isGlassOn {
+                        // ── Flat / Glass-off fallback ──────────────────────────
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(isDark ? Color(red: 0.14, green: 0.15, blue: 0.18) : Color(white: 0.94))
+                            .fill(isDark
+                                  ? Color(red: 0.14, green: 0.15, blue: 0.18)
+                                  : Color(white: 0.94))
                     } else {
+                        // ── Liquid Glass substrate (depth scales with slider) ──
                         ZStack {
-                            // 1. Crystal Translucent Glass Substrate
+                            // 1. Translucent glass substrate — fades in with slider
                             if let material = material {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                     .fill(material)
-                                    .opacity(0.55)
+                                    .opacity(0.35 + 0.30 * glassIntensity)  // 0.35 → 0.65
                             } else {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                     .fill(
                                         isDark
-                                            ? Color.white.opacity(0.10)
-                                            : Color.white.opacity(0.55)
+                                        ? Color.white.opacity(0.06 + 0.06 * glassIntensity)
+                                        : Color.white.opacity(0.40 + 0.20 * glassIntensity)
                                     )
                             }
-                            
-                            // 2. Optical Tint Bleed (Subtle provider color)
+
+                            // 2. Ambient tint bleed — scales with slider
                             if let tint = tint {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                                    .fill(tint.opacity(isDark ? 0.12 : 0.08))
+                                    .fill(tint.opacity((isDark ? 0.08 : 0.05) * glassIntensity))
                             }
-                            
-                            // 3. Top Specular Sheet
+
+                            // 3. Top specular sheet — scales with slider
                             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
-                                            Color.white.opacity(isDark ? 0.07 : 0.25),
-                                            Color.white.opacity(isDark ? 0.01 : 0.05)
+                                            Color.white.opacity((isDark ? 0.10 : 0.30) * glassIntensity),
+                                            Color.white.opacity((isDark ? 0.01 : 0.05) * glassIntensity)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -144,20 +152,26 @@ public struct LiquidGlassCardModifier: ViewModifier {
                 }
             )
             .overlay(
-                // Directional Specular Chamfer Rim
+                // Directional specular rim — softer when glass is dialed down
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
-                        LiquidGlassTokens.specularBorder(isDark: isDark, intensity: 1.0),
+                        isGlassOn
+                        ? LiquidGlassTokens.specularBorder(isDark: isDark,
+                                                           intensity: 0.55 + 0.65 * glassIntensity)
+                        : LiquidGlassTokens.specularBorder(isDark: isDark, intensity: 0.28),
                         lineWidth: 1
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .shadow(
-                color: Color.black.opacity(isDark ? 0.20 : 0.06),
-                radius: 8,
+                color: Color.black.opacity(isDark
+                    ? (0.10 + 0.12 * glassIntensity)
+                    : (0.04 + 0.04 * glassIntensity)),
+                radius: 4 + 5 * glassIntensity,
                 x: 0,
-                y: 3
+                y: 2 + 2 * glassIntensity
             )
+            .animation(LiquidGlassTokens.stateSpring, value: glassIntensity)
     }
 }
 

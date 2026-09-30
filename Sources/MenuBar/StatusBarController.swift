@@ -30,7 +30,11 @@ public class StatusBarController {
         popover.animates = true
         popover.appearance = NSAppearance(named: .darkAqua)
 
-        let hosting = NSHostingController(rootView: MainUsageView(service: service))
+        let hosting = NSHostingController(
+            rootView: MainUsageView(service: service)
+                .environmentObject(LiquidGlassObserver.shared)
+        )
+
 
         // Make the hosting view itself fully transparent so the NSVisualEffectView
         // behind it can sample the real desktop wallpaper (same as Control Center).

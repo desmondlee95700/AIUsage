@@ -6,33 +6,36 @@ public struct MainUsageView: View {
     @State private var spinAngle: Double = 0.0
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    
+    @EnvironmentObject private var glassObserver: LiquidGlassObserver
+
     public init(service: QuotaService = .shared) {
         self.service = service
     }
-    
+
     public var body: some View {
+        let glassIntensity = reduceTransparency ? 0.0 : glassObserver.intensity
+
         VStack(spacing: 0) {
             // Header Bar
             headerBar
-            
+
             // Provider Switcher Tab Bar (only when both are installed)
             if service.isGeminiInstalled && service.isCodexInstalled {
                 providerSwitcherBar
                     .padding(.horizontal, 14)
                     .padding(.bottom, 12)
-                
+
                 Divider()
                     .background(Color.white.opacity(0.06))
             }
-            
+
             // Content Body
             if service.isGeminiInstalled && service.isCodexInstalled {
                 ZStack(alignment: .top) {
                     geminiView
                         .opacity(service.activeProvider == .gemini ? 1.0 : 0.0)
                         .allowsHitTesting(service.activeProvider == .gemini)
-                    
+
                     chatgptView
                         .opacity(service.activeProvider == .chatgpt ? 1.0 : 0.0)
                         .allowsHitTesting(service.activeProvider == .chatgpt)
@@ -53,26 +56,40 @@ public struct MainUsageView: View {
         .fixedSize(horizontal: true, vertical: true)
         .background(
             // The NSVisualEffectView is injected at the AppKit level in StatusBarController.
-            // This layer is just a subtle dark tint to maintain readability over the blurred wallpaper.
+            // This layer adds a subtle dark tint that scales with the Liquid Glass slider.
             Group {
                 if reduceTransparency {
                     Color(red: 0.11, green: 0.12, blue: 0.15)
                 } else {
                     Color(red: 0.05, green: 0.06, blue: 0.09)
-                        .opacity(colorScheme == .dark ? 0.12 : 0.02)
+                        .opacity(colorScheme == .dark
+                                 ? (0.06 + 0.10 * glassIntensity)  // 0.06 (glass off) → 0.16 (glass on)
+                                 : (0.01 + 0.04 * glassIntensity))
                 }
             }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
-                    LiquidGlassTokens.specularBorder(isDark: colorScheme == .dark, intensity: 1.0),
+                    LiquidGlassTokens.specularBorder(
+                        isDark: colorScheme == .dark,
+                        intensity: 0.4 + 0.7 * glassIntensity  // scales with slider
+                    ),
                     lineWidth: 1
                 )
         )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 16, x: 0, y: 8)
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark
+                ? (0.20 + 0.18 * glassIntensity)
+                : (0.06 + 0.08 * glassIntensity)),
+            radius: 10 + 8 * glassIntensity,
+            x: 0,
+            y: 4 + 5 * glassIntensity
+        )
+        .animation(LiquidGlassTokens.stateSpring, value: glassIntensity)
     }
+
     
     // MARK: - Header
     
@@ -360,19 +377,11 @@ public struct MainUsageView: View {
                 name: service.userStatus?.name
             )
             
-            // Quota Models
+            // Quota Models (all groups including Claude and GPT)
             if let groups = service.quotaSummary?.groups {
-                ForEach(groups.filter {
-                    let name = $0.displayName.lowercased()
-                    return !name.contains("claude") && !name.contains("gpt")
-                }) { group in
+                ForEach(groups) { group in
                     QuotaCardView(group: group)
                 }
-            }
-            
-            // Prompt / Flow Credits
-            if let planStatus = service.userStatus?.planStatus {
-                CreditsCardView(planStatus: planStatus)
             }
         }
         .padding(14)
