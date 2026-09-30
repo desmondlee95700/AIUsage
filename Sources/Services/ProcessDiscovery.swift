@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 public struct DiscoveredServer: Equatable {
     public let pid: Int
@@ -22,6 +23,31 @@ public final class InsecureTrustDelegate: NSObject, URLSessionDelegate {
 
 public class ProcessDiscovery {
     private static var cachedServer: DiscoveredServer?
+    
+    public static var isAntigravityInstalled: Bool {
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
+        let candidatePaths = [
+            "/Applications/Antigravity.app",
+            "/Applications/Antigravity IDE.app",
+            "\(home)/Applications/Antigravity.app",
+            "\(home)/Applications/Antigravity IDE.app",
+            "\(home)/.gemini/antigravity"
+        ]
+        for path in candidatePaths {
+            if fileManager.fileExists(atPath: path) {
+                return true
+            }
+        }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity") != nil ||
+           NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity-ide") != nil {
+            return true
+        }
+        if cachedServer != nil || !findProcessCandidates().isEmpty {
+            return true
+        }
+        return false
+    }
     
     public static func discover(forceRefresh: Bool = false) -> DiscoveredServer? {
         if !forceRefresh, let cached = cachedServer {

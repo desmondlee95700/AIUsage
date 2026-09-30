@@ -13,6 +13,10 @@ public class QuotaService: ObservableObject {
         }
     }
     
+    // Installation Status
+    @Published public var isGeminiInstalled: Bool = false
+    @Published public var isCodexInstalled: Bool = false
+    
     // General Status
     @Published public var isLoading: Bool = false
     @Published public var lastUpdated: Date? = nil
@@ -67,11 +71,35 @@ public class QuotaService: ObservableObject {
     private let session: URLSession
     
     public init() {
+        let geminiInst = ProcessDiscovery.isAntigravityInstalled
+        let codexInst = CodexDiscovery.isCodexInstalled
+        self.isGeminiInstalled = geminiInst
+        self.isCodexInstalled = codexInst
+        
         let savedProvider = UserDefaults.standard.string(forKey: "activeProvider")
-        self.activeProvider = AIProvider(rawValue: savedProvider ?? "") ?? .gemini
+        var provider = AIProvider(rawValue: savedProvider ?? "") ?? .gemini
+        if !geminiInst && codexInst {
+            provider = .chatgpt
+        } else if geminiInst && !codexInst {
+            provider = .gemini
+        }
+        self.activeProvider = provider
         
         let savedMode = UserDefaults.standard.string(forKey: "menuBarDisplayMode")
-        self.displayMode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .dual
+        var mode: MenuBarDisplayMode
+        if savedMode == "Dual: ✦ Gemini · ✷ ChatGPT" || savedMode == "Dual (Antigravity & ChatGPT)" {
+            mode = .dual
+        } else if savedMode == "Active Provider Quota" || savedMode == "Active Provider Only" {
+            mode = .activeProvider
+        } else if savedMode == "Gemini Weekly Only" || savedMode == "Antigravity Weekly Only" {
+            mode = .weekly
+        } else {
+            mode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .dual
+        }
+        if mode == .dual && (!geminiInst || !codexInst) {
+            mode = .activeProvider
+        }
+        self.displayMode = mode
         
         let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
         self.refreshInterval = RefreshInterval(rawValue: savedInterval == 0 ? 60 : savedInterval) ?? .oneMinute
@@ -95,22 +123,42 @@ public class QuotaService: ObservableObject {
     public func refresh(forceDiscovery: Bool = false) {
         guard !isLoading else { return }
         
+        let geminiInst = ProcessDiscovery.isAntigravityInstalled
+        let codexInst = CodexDiscovery.isCodexInstalled
+        
         DispatchQueue.main.async {
             self.isLoading = true
+            self.isGeminiInstalled = geminiInst
+            self.isCodexInstalled = codexInst
         }
         
         let dispatchGroup = DispatchGroup()
         
-        // 1. Refresh Gemini (Antigravity)
-        dispatchGroup.enter()
-        refreshGemini(forceDiscovery: forceDiscovery) {
-            dispatchGroup.leave()
+        // 1. Refresh Gemini (Antigravity) if installed
+        if geminiInst {
+            dispatchGroup.enter()
+            refreshGemini(forceDiscovery: forceDiscovery) {
+                dispatchGroup.leave()
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.isGeminiConnected = false
+                self.discoveredServer = nil
+                self.geminiErrorMessage = "Antigravity is not installed."
+            }
         }
         
-        // 2. Refresh ChatGPT (Codex)
-        dispatchGroup.enter()
-        refreshCodex {
-            dispatchGroup.leave()
+        // 2. Refresh ChatGPT (Codex) if installed
+        if codexInst {
+            dispatchGroup.enter()
+            refreshCodex {
+                dispatchGroup.leave()
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.isCodexConnected = false
+                self.codexErrorMessage = "ChatGPT / Codex is not installed."
+            }
         }
         
         dispatchGroup.notify(queue: .main) { [weak self] in
@@ -287,17 +335,42 @@ public class QuotaService: ObservableObject {
     public var primaryWeeklyBucket: QuotaBucket? {
         guard let groups = quotaSummary?.groups else { return nil }
         let group = groups.first { $0.displayName.contains("Gemini") } ?? groups.first
-        return group?.buckets.first { $0.window == "weekly" || $0.bucketId.contains("weekly") }
+        return group?.buckets.first { bucket in
+            let window = bucket.window?.lowercased() ?? ""
+            let id = bucket.bucketId.lowercased()
+            let name = bucket.displayName.lowercased()
+            return window == "weekly" || window.contains("week") || id.contains("weekly") || name.contains("week")
+        }
     }
     
     public var primary5hBucket: QuotaBucket? {
         guard let groups = quotaSummary?.groups else { return nil }
         let group = groups.first { $0.displayName.contains("Gemini") } ?? groups.first
-        return group?.buckets.first { $0.window == "5h" || $0.bucketId.contains("5h") }
+        return group?.buckets.first { bucket in
+            let window = bucket.window?.lowercased() ?? ""
+            let id = bucket.bucketId.lowercased()
+            let name = bucket.displayName.lowercased()
+            return window == "5h" ||
+                   window.contains("5h") ||
+                   id.contains("5h") ||
+                   name.contains("5h") ||
+                   name.contains("5 hour") ||
+                   name.contains("5-hour") ||
+                   window.contains("hour")
+        } ?? group?.buckets.first { $0.window != "weekly" && !$0.bucketId.contains("weekly") }
     }
     
+    /// Returns Antigravity quota percentage (prioritizes 5-hour limit on the menu bar)
     public var geminiPercentage: Int {
+        (primary5hBucket ?? primaryWeeklyBucket)?.percentage ?? 0
+    }
+    
+    public var geminiWeeklyPercentage: Int {
         primaryWeeklyBucket?.percentage ?? 0
+    }
+    
+    public var gemini5hPercentage: Int {
+        primary5hBucket?.percentage ?? geminiPercentage
     }
     
     public var codexPrimaryWindow: CodexRateLimitWindow? {
@@ -320,17 +393,28 @@ public class QuotaService: ObservableObject {
         
         switch displayMode {
         case .dual:
+            if !isGeminiInstalled && !isCodexInstalled {
+                return " No AI Tools"
+            }
+            if isGeminiInstalled && !isCodexInstalled {
+                return isGeminiConnected ? " \(geminiStr)" : " Offline"
+            }
+            if !isGeminiInstalled && isCodexInstalled {
+                return isCodexConnected ? " \(codexStr)" : " Offline"
+            }
             if !isGeminiConnected && !isCodexConnected {
                 return " Offline"
             }
-            return " ✦ \(geminiStr) · ✷ \(codexStr)"
+            return " \(geminiStr) · \(codexStr)"
             
         case .activeProvider:
             switch activeProvider {
             case .gemini:
-                return isGeminiConnected ? " ✦ \(geminiPercentage)%" : " ✦ Offline"
+                guard isGeminiInstalled else { return isCodexConnected ? " \(codexStr)" : " Offline" }
+                return isGeminiConnected ? " \(geminiPercentage)%" : " Offline"
             case .chatgpt:
-                return isCodexConnected ? " ✷ \(codexRemainingPercentage)%" : " ✷ Offline"
+                guard isCodexInstalled else { return isGeminiConnected ? " \(geminiStr)" : " Offline" }
+                return isCodexConnected ? " \(codexRemainingPercentage)%" : " Offline"
             }
             
         case .weekly:
@@ -344,23 +428,33 @@ public class QuotaService: ObservableObject {
     public var menuBarTooltip: String {
         var lines: [String] = ["AIUsage — AI Model Quota Tracker"]
         
-        if isGeminiConnected {
-            let tier = userStatus?.userTier?.name ?? "Connected"
-            let reset = primaryWeeklyBucket?.formattedResetCountdown ?? "Active"
-            lines.append("• ✦ Gemini: \(geminiPercentage)% remaining (\(tier)) · \(reset)")
-        } else {
-            lines.append("• ✦ Gemini: Offline (Launch Antigravity)")
+        if isGeminiInstalled {
+            if isGeminiConnected {
+                let tier = userStatus?.userTier?.name ?? "Connected"
+                let bucket = primary5hBucket ?? primaryWeeklyBucket
+                let reset = bucket?.formattedResetCountdown ?? "Active"
+                let windowDesc = (primary5hBucket != nil) ? "5h limit" : "Weekly"
+                lines.append("• Antigravity: \(geminiPercentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
+            } else {
+                lines.append("• Antigravity: Offline (Launch Antigravity)")
+            }
         }
         
-        if isCodexConnected {
-            let plan = codexAccount?.formattedPlan ?? "Connected"
-            let reset = codexPrimaryWindow?.formattedResetCountdown ?? "Active"
-            lines.append("• ✷ ChatGPT: \(codexRemainingPercentage)% remaining (\(plan)) · \(reset)")
-        } else {
-            lines.append("• ✷ ChatGPT: Offline (Launch ChatGPT.app)")
+        if isCodexInstalled {
+            if isCodexConnected {
+                let plan = codexAccount?.formattedPlan ?? "Connected"
+                let reset = codexPrimaryWindow?.formattedResetCountdown ?? "Active"
+                lines.append("• ChatGPT: \(codexRemainingPercentage)% remaining (\(plan)) · \(reset)")
+            } else {
+                lines.append("• ChatGPT: Offline (Launch ChatGPT.app)")
+            }
         }
         
-        lines.append("Click to switch views or right-click for quick actions")
+        if !isGeminiInstalled && !isCodexInstalled {
+            lines.append("• No supported AI models installed")
+        } else {
+            lines.append("Click to switch views or right-click for quick actions")
+        }
         return lines.joined(separator: "\n")
     }
     

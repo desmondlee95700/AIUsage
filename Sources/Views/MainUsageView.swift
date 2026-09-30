@@ -16,26 +16,38 @@ public struct MainUsageView: View {
             // Header Bar
             headerBar
             
-            // Provider Switcher Tab Bar
-            providerSwitcherBar
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-            
-            Divider()
-                .background(Color.white.opacity(0.06))
-            
-            // Content Body (Persistent ZStack for rock-solid stability with zero height flutter)
-            ZStack(alignment: .top) {
-                geminiView
-                    .opacity(service.activeProvider == .gemini ? 1.0 : 0.0)
-                    .allowsHitTesting(service.activeProvider == .gemini)
+            // Provider Switcher Tab Bar (only when both are installed)
+            if service.isGeminiInstalled && service.isCodexInstalled {
+                providerSwitcherBar
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
                 
-                chatgptView
-                    .opacity(service.activeProvider == .chatgpt ? 1.0 : 0.0)
-                    .allowsHitTesting(service.activeProvider == .chatgpt)
+                Divider()
+                    .background(Color.white.opacity(0.06))
             }
-            .frame(maxWidth: .infinity, alignment: .top)
-            .animation(.easeInOut(duration: 0.15), value: service.activeProvider)
+            
+            // Content Body
+            if service.isGeminiInstalled && service.isCodexInstalled {
+                ZStack(alignment: .top) {
+                    geminiView
+                        .opacity(service.activeProvider == .gemini ? 1.0 : 0.0)
+                        .allowsHitTesting(service.activeProvider == .gemini)
+                    
+                    chatgptView
+                        .opacity(service.activeProvider == .chatgpt ? 1.0 : 0.0)
+                        .allowsHitTesting(service.activeProvider == .chatgpt)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+                .animation(.easeInOut(duration: 0.15), value: service.activeProvider)
+            } else if service.isGeminiInstalled {
+                geminiView
+                    .frame(maxWidth: .infinity, alignment: .top)
+            } else if service.isCodexInstalled {
+                chatgptView
+                    .frame(maxWidth: .infinity, alignment: .top)
+            } else {
+                noToolsInstalledView
+            }
         }
         .frame(width: 380)
         .fixedSize(horizontal: true, vertical: true)
@@ -104,18 +116,34 @@ public struct MainUsageView: View {
             }
             
             // Connection Status Pill
+            let (statusText, statusColor): (String, Color) = {
+                if !service.isGeminiInstalled && !service.isCodexInstalled {
+                    return ("No Tools", Color.gray)
+                }
+                let live: Bool = {
+                    if service.isGeminiInstalled && !service.isCodexInstalled {
+                        return service.isGeminiConnected
+                    }
+                    if !service.isGeminiInstalled && service.isCodexInstalled {
+                        return service.isCodexConnected
+                    }
+                    return service.isConnected
+                }()
+                return (live ? "Live" : "Offline", live ? Color(red: 0.20, green: 0.84, blue: 0.50) : Color.orange)
+            }()
+            
             HStack(spacing: 5) {
                 Circle()
-                    .fill(service.isConnected ? Color(red: 0.20, green: 0.84, blue: 0.50) : Color.orange)
+                    .fill(statusColor)
                     .frame(width: 6.5, height: 6.5)
                     .shadow(
-                        color: (service.isConnected ? Color.green : Color.orange).opacity(0.60),
+                        color: statusColor.opacity(0.60),
                         radius: 3,
                         x: 0,
                         y: 0
                     )
                 
-                Text(service.isConnected ? "Live" : "Offline")
+                Text(statusText)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.70))
             }
@@ -539,5 +567,76 @@ public struct MainUsageView: View {
         }
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - No Tools Installed View
+    
+    private var noToolsInstalledView: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(.thinMaterial)
+                    .frame(width: 68, height: 68)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
+                
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.40, green: 0.65, blue: 1.0), Color(red: 0.20, green: 0.85, blue: 0.60)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            
+            VStack(spacing: 6) {
+                Text("No AI Tools Detected")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Text("Install Antigravity or ChatGPT for macOS to monitor live model quotas and rate limits.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.60))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            
+            Button(action: {
+                service.refresh(forceDiscovery: true)
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Check Again")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.28, green: 0.50, blue: 0.95), Color(red: 0.18, green: 0.38, blue: 0.88)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 36)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 280)
     }
 }

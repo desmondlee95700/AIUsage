@@ -106,3 +106,19 @@ Execute commands directly from the repository root:
   ```bash
   python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py ~/.gemini/skills/liquid-glass-macos27
   ```
+
+---
+
+## 6. Repository Contribution & Branch Protection Rules
+
+To maintain codebase stability, security, and strict quality control:
+
+1. **Main Branch Protection**:
+   - Direct pushes to the `main` branch are strictly prohibited for external contributors.
+   - Direct push, release tagging, and branch management privileges are strictly reserved for the repository owner (`desmondlee95700` / `dessy`).
+2. **Pull Request (PR) Workflow**:
+   - All community and external contributions must be submitted via a dedicated feature branch or fork through a **GitHub Pull Request**.
+   - PRs must pass automated build checks (`swift build`) and follow the macOS 27 Liquid Glass design specifications.
+3. **Zero Token Overhead Policy**:
+   - Any PR introducing external cloud LLM API calls, token-consuming telemetry, or third-party quota proxies will be rejected. All communications must remain strictly local via loopback Connect-RPC or bundled CLI subprocesses.
+

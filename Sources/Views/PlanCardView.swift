@@ -27,7 +27,7 @@ public struct PlanCardView: View {
                         .foregroundColor(Color(red: 0.98, green: 0.78, blue: 0.25))
                 }
                 
-                Text("Current Plan")
+                Text("AntiGravity Subscriptions")
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.white.opacity(0.85))
             }

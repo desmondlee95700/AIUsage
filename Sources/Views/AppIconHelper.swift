@@ -60,4 +60,19 @@ public enum AppIconHelper {
         }
         return nil
     }()
+    
+    public static var dualTemplate: NSImage? = {
+        let size = NSSize(width: 32, height: 14)
+        let img = NSImage(size: size, flipped: false) { rect in
+            if let ag = antigravityTemplate {
+                ag.draw(in: NSRect(x: 0, y: 0, width: 14, height: 14), from: .zero, operation: .sourceOver, fraction: 1.0)
+            }
+            if let cg = chatgptTemplate {
+                cg.draw(in: NSRect(x: 18, y: 0, width: 14, height: 14), from: .zero, operation: .sourceOver, fraction: 1.0)
+            }
+            return true
+        }
+        img.isTemplate = true
+        return img
+    }()
 }

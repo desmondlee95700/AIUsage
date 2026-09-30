@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 public struct CodexDiscovery {
     public static func findCodexBinary() -> String? {
@@ -30,5 +31,15 @@ public struct CodexDiscovery {
         let defaultAppPath = "/Applications/ChatGPT.app"
         let userAppPath = "\(FileManager.default.homeDirectoryForCurrentUser.path)/Applications/ChatGPT.app"
         return FileManager.default.fileExists(atPath: defaultAppPath) || FileManager.default.fileExists(atPath: userAppPath)
+    }
+    
+    public static var isCodexInstalled: Bool {
+        if findCodexBinary() != nil || isChatGPTAppInstalled || hasCodexAuth {
+            return true
+        }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") != nil {
+            return true
+        }
+        return false
     }
 }

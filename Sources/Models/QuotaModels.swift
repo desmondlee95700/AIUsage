@@ -301,9 +301,9 @@ public struct CodexDailyUsageBucket: Codable, Identifiable {
 // MARK: - App Preferences
 
 public enum MenuBarDisplayMode: String, CaseIterable, Codable {
-    case dual = "Dual: ✦ Gemini · ✷ ChatGPT"
-    case activeProvider = "Active Provider Quota"
-    case weekly = "Gemini Weekly Only"
+    case dual = "Dual (Antigravity & ChatGPT)"
+    case activeProvider = "Active Provider Only"
+    case weekly = "Antigravity Weekly Only"
     case iconOnly = "Icon Only"
 }
 

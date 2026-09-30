@@ -69,6 +69,8 @@ public class StatusBarController {
     
     // MARK: - Template Menu Bar Image Generator
     
+    // MARK: - Template Menu Bar Image Generator
+    
     private func renderMenuBarImage() -> NSImage {
         let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
         let textAttrs: [NSAttributedString.Key: Any] = [
@@ -91,6 +93,25 @@ public class StatusBarController {
             return icon
             
         case .dual:
+            let hasAG = service.isGeminiInstalled
+            let hasCodex = service.isCodexInstalled
+            
+            // If neither is installed
+            if !hasAG && !hasCodex {
+                let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
+                icon.isTemplate = true
+                return icon
+            }
+            
+            // If only one is installed, don't show "Off" for the uninstalled tool
+            if hasAG && !hasCodex {
+                return renderSingleProviderImage(provider: .gemini)
+            }
+            if !hasAG && hasCodex {
+                return renderSingleProviderImage(provider: .chatgpt)
+            }
+            
+            // Both are installed: render Dual
             let geminiStr = service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Off"
             let chatgptStr = service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Off"
             
@@ -138,51 +159,54 @@ public class StatusBarController {
             return img
             
         case .activeProvider:
-            let isGemini = service.activeProvider == .gemini
-            let icon = isGemini ? AppIconHelper.antigravityTemplate : AppIconHelper.chatgptTemplate
-            let textStr = isGemini
-                ? (service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Offline")
-                : (service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Offline")
-            
-            let text = NSAttributedString(string: textStr, attributes: textAttrs)
-            let totalWidth = ceil((icon != nil ? iconSize : 0) + text.size().width)
-            
-            let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
-                var x: CGFloat = 0
-                let iconY: CGFloat = (height - iconSize) / 2
-                let textY: CGFloat = (height - text.size().height) / 2
-                
-                if let ic = icon {
-                    ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
-                    x += iconSize
-                }
-                text.draw(at: NSPoint(x: x, y: textY))
-                return true
+            var provider = service.activeProvider
+            if !service.isGeminiInstalled && service.isCodexInstalled {
+                provider = .chatgpt
+            } else if service.isGeminiInstalled && !service.isCodexInstalled {
+                provider = .gemini
             }
-            img.isTemplate = true
-            return img
+            return renderSingleProviderImage(provider: provider)
             
         case .weekly:
-            let icon = AppIconHelper.antigravityTemplate
-            let textStr = service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Offline"
-            let text = NSAttributedString(string: textStr, attributes: textAttrs)
-            let totalWidth = ceil((icon != nil ? iconSize : 0) + text.size().width)
-            
-            let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
-                var x: CGFloat = 0
-                let iconY: CGFloat = (height - iconSize) / 2
-                let textY: CGFloat = (height - text.size().height) / 2
-                
-                if let ic = icon {
-                    ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
-                    x += iconSize
-                }
-                text.draw(at: NSPoint(x: x, y: textY))
-                return true
+            guard service.isGeminiInstalled else {
+                return renderSingleProviderImage(provider: .chatgpt)
             }
-            img.isTemplate = true
-            return img
+            return renderSingleProviderImage(provider: .gemini)
         }
+    }
+    
+    private func renderSingleProviderImage(provider: AIProvider) -> NSImage {
+        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        let textAttrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black
+        ]
+        let iconSize: CGFloat = 14.0
+        let height: CGFloat = 18.0
+        
+        let isGemini = provider == .gemini
+        let icon = isGemini ? AppIconHelper.antigravityTemplate : AppIconHelper.chatgptTemplate
+        let textStr = isGemini
+            ? (service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Off")
+            : (service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Off")
+        
+        let text = NSAttributedString(string: textStr, attributes: textAttrs)
+        let totalWidth = ceil((icon != nil ? iconSize : 0) + text.size().width)
+        
+        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
+            var x: CGFloat = 0
+            let iconY: CGFloat = (height - iconSize) / 2
+            let textY: CGFloat = (height - text.size().height) / 2
+            
+            if let ic = icon {
+                ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
+                x += iconSize
+            }
+            text.draw(at: NSPoint(x: x, y: textY))
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
     
     @objc private func togglePopover(_ sender: AnyObject?) {
@@ -227,34 +251,72 @@ public class StatusBarController {
         menu.addItem(titleItem)
         menu.addItem(NSMenuItem.separator())
         
-        // Provider Selection
-        let geminiItem = NSMenuItem(title: "Gemini (Antigravity)", action: #selector(switchToGeminiAction), keyEquivalent: "1")
-        if let agImg = AppIconHelper.antigravityTemplate {
-            geminiItem.image = agImg
-        }
-        geminiItem.state = service.activeProvider == .gemini ? .on : .off
-        geminiItem.target = self
-        menu.addItem(geminiItem)
+        let bothInstalled = service.isGeminiInstalled && service.isCodexInstalled
         
-        let chatgptItem = NSMenuItem(title: "ChatGPT (Codex)", action: #selector(switchToChatGPTAction), keyEquivalent: "2")
-        if let cgImg = AppIconHelper.chatgptTemplate {
-            chatgptItem.image = cgImg
-        }
-        chatgptItem.state = service.activeProvider == .chatgpt ? .on : .off
-        chatgptItem.target = self
-        menu.addItem(chatgptItem)
+        // Provider Selection (shows what is selected from Menu Bar Display)
+        let providerSectionTitle = NSMenuItem(title: "Provider Selection", action: nil, keyEquivalent: "")
+        providerSectionTitle.isEnabled = false
+        menu.addItem(providerSectionTitle)
+        
+        let selectedTitle: String = {
+            if !service.isGeminiInstalled && !service.isCodexInstalled {
+                return "No AI Models Installed"
+            }
+            if service.displayMode == .dual {
+                return "Dual (Antigravity & ChatGPT)"
+            } else if service.activeProvider == .gemini {
+                return "Antigravity (Gemini)"
+            } else {
+                return "ChatGPT (Codex)"
+            }
+        }()
+        
+        let selectedIcon: NSImage? = {
+            if service.displayMode == .dual {
+                return AppIconHelper.dualTemplate
+            } else if service.activeProvider == .gemini {
+                return AppIconHelper.antigravityTemplate
+            } else {
+                return AppIconHelper.chatgptTemplate
+            }
+        }()
+        
+        let currentItem = NSMenuItem(title: selectedTitle, action: nil, keyEquivalent: "")
+        currentItem.image = selectedIcon
+        currentItem.state = .on
+        currentItem.isEnabled = false
+        menu.addItem(currentItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // Display Mode Submenu
+        // Menu Bar Display Submenu (consists strictly of: Dual, Antigravity, ChatGPT)
         let displayMenu = NSMenu()
-        for mode in MenuBarDisplayMode.allCases {
-            let item = NSMenuItem(title: mode.rawValue, action: #selector(changeDisplayModeAction(_:)), keyEquivalent: "")
-            item.representedObject = mode
-            item.state = service.displayMode == mode ? .on : .off
-            item.target = self
-            displayMenu.addItem(item)
+        if bothInstalled {
+            let dualModeItem = NSMenuItem(title: "Dual (Antigravity & ChatGPT)", action: #selector(switchToDualAction), keyEquivalent: "d")
+            dualModeItem.image = AppIconHelper.dualTemplate
+            dualModeItem.state = (service.displayMode == .dual) ? .on : .off
+            dualModeItem.target = self
+            displayMenu.addItem(dualModeItem)
         }
+        
+        if service.isGeminiInstalled {
+            let geminiModeItem = NSMenuItem(title: "Antigravity (Gemini)", action: #selector(switchToGeminiAction), keyEquivalent: "1")
+            geminiModeItem.image = AppIconHelper.antigravityTemplate
+            let isSelected = (service.displayMode == .activeProvider || service.displayMode == .weekly) && service.activeProvider == .gemini
+            geminiModeItem.state = isSelected ? .on : .off
+            geminiModeItem.target = self
+            displayMenu.addItem(geminiModeItem)
+        }
+        
+        if service.isCodexInstalled {
+            let chatgptModeItem = NSMenuItem(title: "ChatGPT (Codex)", action: #selector(switchToChatGPTAction), keyEquivalent: "2")
+            chatgptModeItem.image = AppIconHelper.chatgptTemplate
+            let isSelected = (service.displayMode == .activeProvider) && service.activeProvider == .chatgpt
+            chatgptModeItem.state = isSelected ? .on : .off
+            chatgptModeItem.target = self
+            displayMenu.addItem(chatgptModeItem)
+        }
+        
         let displaySubItem = NSMenuItem(title: "Menu Bar Display", action: nil, keyEquivalent: "")
         displaySubItem.submenu = displayMenu
         menu.addItem(displaySubItem)
@@ -290,12 +352,18 @@ public class StatusBarController {
         statusItem.menu = nil // Restore normal click behavior
     }
     
+    @objc private func switchToDualAction() {
+        service.displayMode = .dual
+    }
+    
     @objc private func switchToGeminiAction() {
         service.activeProvider = .gemini
+        service.displayMode = .activeProvider
     }
     
     @objc private func switchToChatGPTAction() {
         service.activeProvider = .chatgpt
+        service.displayMode = .activeProvider
     }
     
     @objc private func changeDisplayModeAction(_ sender: NSMenuItem) {
