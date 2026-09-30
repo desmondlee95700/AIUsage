@@ -29,17 +29,60 @@ public class StatusBarController {
         popover.behavior = .transient
         popover.animates = true
         popover.appearance = NSAppearance(named: .darkAqua)
+
         let hosting = NSHostingController(rootView: MainUsageView(service: service))
-        popover.contentViewController = hosting
+
+        // Make the hosting view itself fully transparent so the NSVisualEffectView
+        // behind it can sample the real desktop wallpaper (same as Control Center).
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
+
+        // Embed a full-size NSVisualEffectView as the background layer.
+        // This must be at the AppKit level — SwiftUI .background() alone cannot
+        // pierce the opaque NSHostingView container.
+        let effectView = NSVisualEffectView()
+        effectView.material = .hudWindow
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Insert effectView *behind* the hosting view inside a wrapper
+        let wrapper = NSViewController()
+        wrapper.view = NSView()
+        wrapper.view.wantsLayer = true
+        wrapper.view.layer?.backgroundColor = NSColor.clear.cgColor
+
+        wrapper.view.addSubview(effectView)
+        wrapper.view.addSubview(hosting.view)
+
+        effectView.translatesAutoresizingMaskIntoConstraints = false
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            effectView.leadingAnchor.constraint(equalTo: wrapper.view.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: wrapper.view.trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: wrapper.view.topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: wrapper.view.bottomAnchor),
+
+            hosting.view.leadingAnchor.constraint(equalTo: wrapper.view.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: wrapper.view.trailingAnchor),
+            hosting.view.topAnchor.constraint(equalTo: wrapper.view.topAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: wrapper.view.bottomAnchor),
+        ])
+
+        popover.contentViewController = wrapper
         updatePopoverSize(force: true)
     }
     
     public func updatePopoverSize(force: Bool = false) {
         guard let controller = popover.contentViewController else { return }
-        controller.view.layoutSubtreeIfNeeded()
-        let targetHeight = ceil(controller.view.fittingSize.height)
+        // The hosting controller is a child of the wrapper; measure its fitting size.
+        let measureView = controller.children.first?.view ?? controller.view
+        measureView.layoutSubtreeIfNeeded()
+        let targetHeight = ceil(measureView.fittingSize.height)
         guard targetHeight > 50 else { return }
-        
+
         let currentHeight = popover.contentSize.height
         // Only resize if forced, initial load (currentHeight <= 0), or height delta > 25pt
         if force || currentHeight <= 0 || abs(currentHeight - targetHeight) > 25 {

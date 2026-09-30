@@ -107,24 +107,24 @@ public struct LiquidGlassCardModifier: ViewModifier {
                             .fill(isDark ? Color(red: 0.14, green: 0.15, blue: 0.18) : Color(white: 0.94))
                     } else {
                         ZStack {
-                            // 1. Crystal Translucent Glass Substrate (Transparent to desktop wallpaper!)
+                            // 1. Crystal Translucent Glass Substrate
                             if let material = material {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                     .fill(material)
-                                    .opacity(0.40)
+                                    .opacity(0.55)
                             } else {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                                     .fill(
                                         isDark
-                                            ? Color.white.opacity(0.045)
-                                            : Color.white.opacity(0.40)
+                                            ? Color.white.opacity(0.10)
+                                            : Color.white.opacity(0.55)
                                     )
                             }
                             
                             // 2. Optical Tint Bleed (Subtle provider color)
                             if let tint = tint {
                                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                                    .fill(tint.opacity(isDark ? 0.08 : 0.05))
+                                    .fill(tint.opacity(isDark ? 0.12 : 0.08))
                             }
                             
                             // 3. Top Specular Sheet

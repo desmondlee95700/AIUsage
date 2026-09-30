@@ -52,18 +52,14 @@ public struct MainUsageView: View {
         .frame(width: 380)
         .fixedSize(horizontal: true, vertical: true)
         .background(
+            // The NSVisualEffectView is injected at the AppKit level in StatusBarController.
+            // This layer is just a subtle dark tint to maintain readability over the blurred wallpaper.
             Group {
                 if reduceTransparency {
                     Color(red: 0.11, green: 0.12, blue: 0.15)
                 } else {
-                    ZStack {
-                        // 1. Native macOS Popover Translucent Blur (Samples desktop wallpaper!)
-                        VisualEffectView(material: .popover, blendingMode: .behindWindow)
-                        
-                        // 2. Crystal Translucent Ambient Bleed (Preserves full wallpaper visibility!)
-                        Color(red: 0.05, green: 0.06, blue: 0.09)
-                            .opacity(colorScheme == .dark ? 0.22 : 0.03)
-                    }
+                    Color(red: 0.05, green: 0.06, blue: 0.09)
+                        .opacity(colorScheme == .dark ? 0.12 : 0.02)
                 }
             }
         )
