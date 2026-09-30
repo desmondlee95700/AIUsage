@@ -1,0 +1,70 @@
+//
+//  LiquidGlassModifier.swift
+//  macOS 27 Liquid Glass UI Component
+//
+
+import SwiftUI
+
+public struct LiquidGlassContainer<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    
+    private let cornerRadius: CGFloat
+    private let material: Material
+    private let content: Content
+    
+    public init(
+        cornerRadius: CGFloat = 14,
+        material: Material = .thinMaterial,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.cornerRadius = cornerRadius
+        self.material = material
+        self.content = content()
+    }
+    
+    public var body: some View {
+        content
+            .background(
+                Group {
+                    if reduceTransparency {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(colorScheme == .dark ? Color(white: 0.14) : Color(white: 0.94))
+                    } else {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(material)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                    .fill(
+                                        colorScheme == .dark
+                                            ? Color.white.opacity(0.04)
+                                            : Color.white.opacity(0.40)
+                                    )
+                            )
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: colorScheme == .dark ? Color.white.opacity(0.24) : Color.white.opacity(0.85), location: 0.0),
+                                .init(color: colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.30), location: 0.5),
+                                .init(color: colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.08), location: 1.0)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08),
+                radius: 12,
+                x: 0,
+                y: 6
+            )
+    }
+}

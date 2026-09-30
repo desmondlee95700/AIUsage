@@ -1,0 +1,16 @@
+# Xcode & Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+*.xcodeproj
+*.xcworkspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build & Release Artifacts
+*.app
+*.dmg
+.dmg_staging/

@@ -1,0 +1,17 @@
+{
+  "skill_name": "liquid-glass-macos27",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a macOS SwiftUI card displaying AI token quota usage with liquid glass materials, specular rim highlight, and spring animations.",
+      "expected_output": "SwiftUI View using .thinMaterial, specular strokeBorder with LinearGradient, and fluid spring animation.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Style the AIUsage menu bar popover window with macOS 27 liquid glass theme, respecting reduce transparency accessibility setting.",
+      "expected_output": "SwiftUI layout with .ultraThinMaterial, clear NSWindow background, and accessibilityReduceTransparency fallback.",
+      "files": []
+    }
+  ]
+}
