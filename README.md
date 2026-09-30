@@ -17,6 +17,16 @@ Download the latest pre-compiled macOS disk image:
 2. Drag **AIUsage.app** into your `/Applications` folder.
 3. Launch **AIUsage** — it will immediately appear in your macOS menu bar!
 
+> [!TIP]
+> **macOS Gatekeeper Notice ("AIUsage is damaged and can't be opened")**:  
+> Because AIUsage is an independent open-source app distributed outside the Mac App Store without an Apple Developer ID certificate, macOS attaches a quarantine flag to files downloaded via browsers (Chrome, Safari) and blocks them.
+> 
+> If you see this warning, open **Terminal** and run this one-line command:
+> ```bash
+> xattr -cr /Applications/AIUsage.app
+> ```
+> *(Or navigate to **System Settings > Privacy & Security**, scroll down to **Security**, and click **Open Anyway**.)*
+
 ---
 
 ## ✨ Features

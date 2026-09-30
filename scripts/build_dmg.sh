@@ -22,6 +22,9 @@ cp -R "$DIR/AIUsage.app" "$STAGING_DIR/"
 # Create /Applications symlink for drag-and-drop installation
 ln -s /Applications "$STAGING_DIR/Applications"
 
+# Strip any extended attributes from staging
+xattr -rc "$STAGING_DIR" 2>/dev/null || true
+
 echo "💿 Creating compressed DMG..."
 hdiutil create \
   -volname "$DMG_NAME" \
@@ -29,6 +32,9 @@ hdiutil create \
   -ov \
   -format UDZO \
   "$DMG_FILE"
+
+# Ad-hoc sign DMG
+codesign --force --sign - "$DMG_FILE" 2>/dev/null || true
 
 rm -rf "$STAGING_DIR"
 echo "✅ DMG successfully created at: $DMG_FILE"

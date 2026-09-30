@@ -49,9 +49,9 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.1</string>
+    <string>1.1.2</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
@@ -64,4 +64,12 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 </plist>
 EOF
 
-echo "✅ App bundle successfully created at: $APP_DIR"
+# Sign the app bundle with ad-hoc signature
+echo "🔏 Signing macOS .app bundle..."
+codesign --force --deep --sign - "$APP_DIR"
+
+# Verify bundle signature
+echo "🔍 Verifying bundle signature..."
+codesign --verify --deep --strict "$APP_DIR"
+
+echo "✅ App bundle successfully created and signed at: $APP_DIR"
