@@ -32,15 +32,21 @@ public enum AppIconHelper {
     }
     
     public static var appIconImage: NSImage? = {
-        loadAsset(named: "AppIcon", ofType: "png") ?? loadAsset(named: "AppIcon", ofType: "icns")
+        guard let image = loadAsset(named: "AppIcon", ofType: "png") ?? loadAsset(named: "AppIcon", ofType: "icns") else { return nil }
+        image.size = NSSize(width: 32, height: 32)
+        return image
     }()
     
     public static var antigravityIcon: NSImage? = {
-        loadAsset(named: "AntigravityIcon", ofType: "png") ?? appIconImage
+        guard let image = loadAsset(named: "AntigravityIcon", ofType: "png") ?? appIconImage else { return nil }
+        image.size = NSSize(width: 32, height: 32)
+        return image
     }()
     
     public static var chatgptIcon: NSImage? = {
-        loadAsset(named: "ChatGPTIcon", ofType: "png")
+        guard let image = loadAsset(named: "ChatGPTIcon", ofType: "png") else { return nil }
+        image.size = NSSize(width: 32, height: 32)
+        return image
     }()
     
     public static var antigravityTemplate: NSImage? = {

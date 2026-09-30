@@ -40,6 +40,7 @@ public class QuotaService: ObservableObject {
         switch activeProvider {
         case .gemini: return isGeminiConnected
         case .chatgpt: return isCodexConnected
+        case .claude: return false
         }
     }
     
@@ -47,6 +48,39 @@ public class QuotaService: ObservableObject {
         switch activeProvider {
         case .gemini: return geminiErrorMessage
         case .chatgpt: return codexErrorMessage
+        case .claude: return "Claude (Anthropic) support coming soon."
+        }
+    }
+    
+    // Codex Reset State
+    @Published public var isConsumingReset: Bool = false
+    @Published public var resetActionMessage: String? = nil
+    @Published public var resetActionIsSuccess: Bool = false
+    
+    // Provider Focus Mode (Syncs Popover & Menu Bar)
+    @Published public var providerFocusMode: ProviderFocusMode {
+        didSet {
+            UserDefaults.standard.set(providerFocusMode.rawValue, forKey: "providerFocusMode")
+            updateMenuBarCallback?()
+        }
+    }
+    
+    // Active provider within Multi-Provider (Both) view
+    @Published public var dualActiveProvider: AIProvider = .gemini
+    
+    public func cycleDualActiveProvider() {
+        let activeProviders: [AIProvider] = {
+            var list: [AIProvider] = []
+            if isGeminiInstalled { list.append(.gemini) }
+            if isCodexInstalled { list.append(.chatgpt) }
+            return list
+        }()
+        guard !activeProviders.isEmpty else { return }
+        if let index = activeProviders.firstIndex(of: dualActiveProvider) {
+            let nextIndex = (index + 1) % activeProviders.count
+            dualActiveProvider = activeProviders[nextIndex]
+        } else {
+            dualActiveProvider = activeProviders[0]
         }
     }
     
@@ -66,6 +100,7 @@ public class QuotaService: ObservableObject {
     }
     
     public var updateMenuBarCallback: (() -> Void)?
+    public var onFocusModeChanged: (() -> Void)?
     
     private var timer: Timer?
     private let session: URLSession
@@ -101,12 +136,52 @@ public class QuotaService: ObservableObject {
         }
         self.displayMode = mode
         
+        let savedFocus = UserDefaults.standard.string(forKey: "providerFocusMode")
+        var focus: ProviderFocusMode
+        if let f = ProviderFocusMode(rawValue: savedFocus ?? "") {
+            focus = f
+        } else {
+            if mode == .dual {
+                focus = .both
+            } else if provider == .chatgpt {
+                focus = .chatgpt
+            } else {
+                focus = .gemini
+            }
+        }
+        if focus == .both && (!geminiInst || !codexInst) {
+            focus = codexInst ? .chatgpt : .gemini
+        }
+        self.providerFocusMode = focus
+        
         let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
         self.refreshInterval = RefreshInterval(rawValue: savedInterval == 0 ? 60 : savedInterval) ?? .oneMinute
         
         self.session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
         
         restartTimer()
+    }
+    
+    public func setFocusMode(_ mode: ProviderFocusMode) {
+        self.providerFocusMode = mode
+        switch mode {
+        case .gemini:
+            self.activeProvider = .gemini
+            self.displayMode = .activeProvider
+            self.dualActiveProvider = .gemini
+        case .chatgpt:
+            self.activeProvider = .chatgpt
+            self.displayMode = .activeProvider
+            self.dualActiveProvider = .chatgpt
+        case .claude:
+            self.activeProvider = .claude
+            self.displayMode = .activeProvider
+            self.dualActiveProvider = .claude
+        case .both:
+            self.displayMode = .dual
+        }
+        updateMenuBarCallback?()
+        onFocusModeChanged?()
     }
     
     public func restartTimer() {
@@ -252,6 +327,35 @@ public class QuotaService: ObservableObject {
                     self.codexErrorMessage = err.localizedDescription
                 }
                 completion()
+            }
+        }
+    }
+    
+    public func consumeCodexReset(completion: ((Bool, String) -> Void)? = nil) {
+        guard !isConsumingReset else { return }
+        isConsumingReset = true
+        resetActionMessage = nil
+        
+        CodexService.shared.consumeResetCredit { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isConsumingReset = false
+                
+                switch result {
+                case .success(let outcome):
+                    self.resetActionIsSuccess = outcome.isSuccess
+                    self.resetActionMessage = outcome.userMessage
+                    if outcome.isSuccess {
+                        self.refreshCodex {
+                            self.updateMenuBarCallback?()
+                        }
+                    }
+                    completion?(outcome.isSuccess, outcome.userMessage)
+                case .failure(let error):
+                    self.resetActionIsSuccess = false
+                    self.resetActionMessage = error.localizedDescription
+                    completion?(false, error.localizedDescription)
+                }
             }
         }
     }
@@ -450,6 +554,8 @@ public class QuotaService: ObservableObject {
             case .chatgpt:
                 guard isCodexInstalled else { return isGeminiConnected ? " \(geminiStr)" : " Offline" }
                 return isCodexConnected ? " \(codexRemainingPercentage)%" : " Offline"
+            case .claude:
+                return " Claude"
             }
             
         case .weekly:
@@ -461,36 +567,39 @@ public class QuotaService: ObservableObject {
     }
     
     public var menuBarTooltip: String {
-        var lines: [String] = ["AIUsage — AI Model Quota Tracker"]
+        var lines: [String] = ["AIUsage \(AppVersion.displayString) — AI Model Quota Tracker"]
         
-        if isGeminiInstalled {
+        let showGemini = (providerFocusMode == .gemini || providerFocusMode == .both) && isGeminiInstalled
+        let showCodex = (providerFocusMode == .chatgpt || providerFocusMode == .both) && isCodexInstalled
+        
+        if showGemini {
             if isGeminiConnected {
                 let tier = userStatus?.userTier?.name ?? "Connected"
                 let bucket = primary5hBucket ?? primaryWeeklyBucket
                 let reset = bucket?.formattedResetCountdown ?? "Active"
                 let windowDesc = (primary5hBucket != nil) ? "5h limit" : "Weekly"
-                lines.append("• Antigravity: \(geminiPercentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
+                lines.append("• Antigravity (Google): \(geminiPercentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
             } else {
-                lines.append("• Antigravity: Offline (Launch Antigravity)")
+                lines.append("• Antigravity (Google): Offline (Launch Antigravity)")
             }
         }
         
-        if isCodexInstalled {
+        if showCodex {
             if isCodexConnected {
                 let plan = codexAccount?.formattedPlan ?? "Connected"
                 if let short = codex5hWindow, let weekly = codexWeeklyWindow {
                     let shortReset = short.formattedResetCountdown ?? "Active"
                     let weeklyReset = weekly.formattedResetCountdown ?? "Active"
-                    lines.append("• ChatGPT: 5h: \(short.remainingPercent)% (\(shortReset)) · Weekly: \(weekly.remainingPercent)% (\(weeklyReset)) (\(plan))")
+                    lines.append("• ChatGPT (OpenAI): 5h: \(short.remainingPercent)% (\(shortReset)) · Weekly: \(weekly.remainingPercent)% (\(weeklyReset)) (\(plan))")
                 } else if let active = codexActiveWindow {
                     let reset = active.formattedResetCountdown ?? "Active"
                     let desc = active.windowDisplayName
-                    lines.append("• ChatGPT: \(active.remainingPercent)% (\(desc)) remaining (\(plan)) · \(reset)")
+                    lines.append("• ChatGPT (OpenAI): \(active.remainingPercent)% (\(desc)) remaining (\(plan)) · \(reset)")
                 } else {
-                    lines.append("• ChatGPT: \(codexRemainingPercentage)% remaining (\(plan))")
+                    lines.append("• ChatGPT (OpenAI): \(codexRemainingPercentage)% remaining (\(plan))")
                 }
             } else {
-                lines.append("• ChatGPT: Offline (Launch ChatGPT.app)")
+                lines.append("• ChatGPT (OpenAI): Offline (Launch ChatGPT.app)")
             }
         }
         

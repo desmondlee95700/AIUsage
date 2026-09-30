@@ -1,7 +1,6 @@
 import SwiftUI
 
 public struct MainUsageView: View {
-    @Namespace private var tabNamespace
     @ObservedObject var service: QuotaService
     @State private var spinAngle: Double = 0.0
     @Environment(\.colorScheme) private var colorScheme
@@ -19,38 +18,80 @@ public struct MainUsageView: View {
             // Header Bar
             headerBar
 
-            // Provider Switcher Tab Bar (only when both are installed)
-            if service.isGeminiInstalled && service.isCodexInstalled {
-                providerSwitcherBar
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 12)
+            Divider()
+                .background(Color.white.opacity(0.06))
+
+            // Multi-Provider Flipping Switcher (ONLY shown when Both / >1 provider is selected)
+            if service.providerFocusMode == .both && (service.isGeminiInstalled && service.isCodexInstalled) {
+                multiProviderSwitcherBar
 
                 Divider()
-                    .background(Color.white.opacity(0.06))
+                    .background(Color.white.opacity(0.04))
             }
 
-            // Content Body
-            if service.isGeminiInstalled && service.isCodexInstalled {
-                ZStack(alignment: .top) {
-                    geminiView
-                        .opacity(service.activeProvider == .gemini ? 1.0 : 0.0)
-                        .allowsHitTesting(service.activeProvider == .gemini)
-
-                    chatgptView
-                        .opacity(service.activeProvider == .chatgpt ? 1.0 : 0.0)
-                        .allowsHitTesting(service.activeProvider == .chatgpt)
+            // Fixed-Height Content Container (ZERO height shift, ZERO flicker)
+            ZStack(alignment: .top) {
+                if !service.isGeminiInstalled && !service.isCodexInstalled {
+                    noToolsInstalledView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if service.isGeminiInstalled && !service.isCodexInstalled {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        if service.isGeminiConnected {
+                            geminiContentView
+                        } else {
+                            geminiOfflineView
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if !service.isGeminiInstalled && service.isCodexInstalled {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        if service.isCodexConnected {
+                            chatgptContentView
+                        } else {
+                            chatgptOfflineView
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    switch service.providerFocusMode {
+                    case .gemini:
+                        ScrollView(.vertical, showsIndicators: false) {
+                            if service.isGeminiConnected {
+                                geminiContentView
+                            } else {
+                                geminiOfflineView
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
+                        
+                    case .chatgpt:
+                        ScrollView(.vertical, showsIndicators: false) {
+                            if service.isCodexConnected {
+                                chatgptContentView
+                            } else {
+                                chatgptOfflineView
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
+                        
+                    case .claude:
+                        claudePlaceholderView
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.opacity)
+                            
+                    case .both:
+                        dualFlippingContentView
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.opacity)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
-                .animation(.easeInOut(duration: 0.15), value: service.activeProvider)
-            } else if service.isGeminiInstalled {
-                geminiView
-                    .frame(maxWidth: .infinity, alignment: .top)
-            } else if service.isCodexInstalled {
-                chatgptView
-                    .frame(maxWidth: .infinity, alignment: .top)
-            } else {
-                noToolsInstalledView
             }
+            .frame(height: 440)
+            .clipped()
+            .animation(.easeInOut(duration: 0.12), value: service.providerFocusMode)
+            .animation(.easeInOut(duration: 0.20), value: service.dualActiveProvider)
         }
         .frame(width: 380)
         .fixedSize(horizontal: true, vertical: true)
@@ -124,9 +165,15 @@ public struct MainUsageView: View {
                         .shadow(color: Color(red: 0.25, green: 0.45, blue: 0.95).opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                Text("AIUsage")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("AIUsage")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Text(AppVersion.displayString)
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundColor(.white.opacity(0.40))
+                }
             }
             
             // Connection Status Pill
@@ -135,13 +182,16 @@ public struct MainUsageView: View {
                     return ("No Tools", Color.gray)
                 }
                 let live: Bool = {
-                    if service.isGeminiInstalled && !service.isCodexInstalled {
+                    switch service.providerFocusMode {
+                    case .gemini:
                         return service.isGeminiConnected
-                    }
-                    if !service.isGeminiInstalled && service.isCodexInstalled {
+                    case .chatgpt:
                         return service.isCodexConnected
+                    case .claude:
+                        return false
+                    case .both:
+                        return service.isGeminiConnected || service.isCodexConnected
                     }
-                    return service.isConnected
                 }()
                 return (live ? "Live" : "Offline", live ? Color(red: 0.20, green: 0.84, blue: 0.50) : Color.orange)
             }()
@@ -204,146 +254,6 @@ public struct MainUsageView: View {
         .padding(.vertical, 10)
     }
     
-    // MARK: - Liquid Glass Provider Switcher
-    
-    private var providerSwitcherBar: some View {
-        HStack(spacing: 5) {
-            providerButton(
-                provider: .gemini,
-                title: "Gemini",
-                subtitle: "Antigravity",
-                icon: AppIconHelper.antigravityIcon,
-                isConnected: service.isGeminiConnected,
-                percentage: service.isGeminiConnected ? "\(service.geminiPercentage)%" : "Off"
-            )
-            
-            providerButton(
-                provider: .chatgpt,
-                title: "ChatGPT",
-                subtitle: "Codex",
-                icon: AppIconHelper.chatgptIcon,
-                isConnected: service.isCodexConnected,
-                percentage: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off"
-            )
-        }
-        .padding(3.5)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color.black.opacity(0.35))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .animation(LiquidGlassTokens.stateSpring, value: service.activeProvider)
-    }
-    
-    private func providerButton(
-        provider: AIProvider,
-        title: String,
-        subtitle: String,
-        icon: NSImage?,
-        isConnected: Bool,
-        percentage: String
-    ) -> some View {
-        let isSelected = service.activeProvider == provider
-        let accentColor: Color = provider == .gemini ? Color(red: 0.28, green: 0.54, blue: 0.98) : Color(red: 0.16, green: 0.74, blue: 0.52)
-        
-        return Button(action: {
-            service.activeProvider = provider
-        }) {
-            HStack(spacing: 7) {
-                // Real Provider Icon
-                if let icon = icon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 19, height: 19)
-                        .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.8)
-                        )
-                } else {
-                    Image(systemName: provider == .gemini ? "sparkles" : "circle.hexagongrid")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(
-                            isSelected ? accentColor : .white.opacity(0.50)
-                        )
-                }
-                
-                VStack(alignment: .leading, spacing: 0.5) {
-                    Text(title)
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                    
-                    Text(subtitle)
-                        .font(.system(size: 9.5))
-                        .foregroundColor(.white.opacity(0.42))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                
-                Spacer(minLength: 4)
-                
-                // Live Status Pill on the tab button
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(isConnected ? (provider == .gemini ? Color(red: 0.25, green: 0.65, blue: 1.0) : Color(red: 0.20, green: 0.85, blue: 0.55)) : Color.orange)
-                        .frame(width: 5.5, height: 5.5)
-                        .shadow(color: isConnected ? accentColor.opacity(0.60) : Color.clear, radius: 2, x: 0, y: 0)
-                    
-                    Text(percentage)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.80))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(isSelected ? accentColor.opacity(0.28) : Color.white.opacity(0.06))
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(isSelected ? Color.white.opacity(0.35) : Color.white.opacity(0.06), lineWidth: 0.8)
-                )
-            }
-            .padding(.horizontal, 9)
-            .frame(height: 38)
-            .frame(maxWidth: .infinity)
-            .background(
-                ZStack {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.regularMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(accentColor.opacity(0.12))
-                            )
-                            .matchedGeometryEffect(id: "activeTabHighlight", in: tabNamespace)
-                    }
-                }
-            )
-            .overlay(
-                ZStack {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(
-                                LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.15),
-                                lineWidth: 1
-                            )
-                            .matchedGeometryEffect(id: "activeTabBorder", in: tabNamespace)
-                    }
-                }
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-    
     // MARK: - Persistent Provider Views
     
     @ViewBuilder
@@ -366,9 +276,213 @@ public struct MainUsageView: View {
         }
     }
     
+    // MARK: - Multi-Provider Flipping Switcher Bar
+    
+    // MARK: - Multi-Provider Flipping Switcher Bar
+    
+    private var multiProviderSwitcherBar: some View {
+        HStack(spacing: 5) {
+            dualProviderTabButton(
+                provider: .gemini,
+                title: "Antigravity",
+                subtitle: "Google",
+                icon: AppIconHelper.antigravityIcon,
+                systemFallback: "sparkles",
+                badge: service.isGeminiConnected ? "\(service.geminiPercentage)%" : "Off",
+                accentColor: Color(red: 0.28, green: 0.54, blue: 0.98)
+            )
+            
+            dualProviderTabButton(
+                provider: .chatgpt,
+                title: "ChatGPT",
+                subtitle: "OpenAI",
+                icon: AppIconHelper.chatgptIcon,
+                systemFallback: "circle.hexagongrid",
+                badge: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off",
+                accentColor: Color(red: 0.16, green: 0.74, blue: 0.52)
+            )
+            
+            dualProviderTabButton(
+                provider: .claude,
+                title: "Claude",
+                subtitle: "Anthropic",
+                icon: nil,
+                systemFallback: "asterisk",
+                badge: "Soon",
+                accentColor: Color(red: 0.85, green: 0.45, blue: 0.25),
+                isDisabled: true
+            )
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.8)
+        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+    }
+    
+    private func dualProviderTabButton(
+        provider: AIProvider,
+        title: String,
+        subtitle: String,
+        icon: NSImage?,
+        systemFallback: String,
+        badge: String,
+        accentColor: Color,
+        isDisabled: Bool = false
+    ) -> some View {
+        let isSelected = service.dualActiveProvider == provider
+        
+        return Button(action: {
+            guard !isDisabled else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                service.dualActiveProvider = provider
+            }
+        }) {
+            HStack(spacing: 5) {
+                if let icon = icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                } else {
+                    Image(systemName: systemFallback)
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundColor(isSelected ? .white : accentColor.opacity(isDisabled ? 0.40 : 1.0))
+                }
+                
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title)
+                        .font(.system(size: 10.5, weight: isSelected ? .bold : .medium))
+                        .foregroundColor(isSelected ? .white : .white.opacity(isDisabled ? 0.35 : 0.75))
+                        .lineLimit(1)
+                    
+                    Text(subtitle)
+                        .font(.system(size: 8.5, weight: .regular))
+                        .foregroundColor(isSelected ? .white.opacity(0.80) : .white.opacity(isDisabled ? 0.25 : 0.45))
+                        .lineLimit(1)
+                }
+                
+                Text(badge)
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 4.5)
+                    .padding(.vertical, 1.5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(isSelected ? Color.white.opacity(0.22) : Color.white.opacity(0.08))
+                    )
+                    .foregroundColor(isSelected ? .white : .white.opacity(isDisabled ? 0.30 : 0.60))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4.5)
+            .padding(.horizontal, 4)
+            .background(
+                Group {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accentColor.opacity(0.85),
+                                        accentColor.opacity(0.65)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.8)
+                            )
+                            .shadow(color: accentColor.opacity(0.40), radius: 5, x: 0, y: 1.5)
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+    }
+    
+    // MARK: - Dual Flipping Content View
+    
+    @ViewBuilder
+    private var dualFlippingContentView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            Group {
+                switch service.dualActiveProvider {
+                case .gemini:
+                    if service.isGeminiConnected {
+                        geminiContentView
+                    } else {
+                        geminiOfflineView
+                    }
+                    
+                case .chatgpt:
+                    if service.isCodexConnected {
+                        chatgptContentView
+                    } else {
+                        chatgptOfflineView
+                    }
+                    
+                case .claude:
+                    claudePlaceholderView
+                }
+            }
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                removal: .opacity.combined(with: .scale(scale: 1.02))
+            ))
+            .id(service.dualActiveProvider)
+        }
+    }
+    
+    // MARK: - Claude Future Integration View
+    
+    private var claudePlaceholderView: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(.thinMaterial)
+                    .frame(width: 68, height: 68)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
+                
+                Image(systemName: "asterisk")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.25))
+            }
+            
+            VStack(spacing: 5) {
+                Text("Claude (Anthropic) Coming Soon")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Text("Anthropic Claude quota and rate-limit tracking will be available in an upcoming update.")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.60))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .padding(.vertical, 36)
+        .frame(maxWidth: .infinity)
+    }
+    
     // MARK: - Gemini Views
     
-    private var geminiContentView: some View {
+    private var geminiCards: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Plan Card
             PlanCardView(
@@ -384,7 +498,11 @@ public struct MainUsageView: View {
                 }
             }
         }
-        .padding(14)
+    }
+    
+    private var geminiContentView: some View {
+        geminiCards
+            .padding(14)
     }
     
     private var geminiOfflineView: some View {
@@ -423,7 +541,7 @@ public struct MainUsageView: View {
             }
             
             VStack(spacing: 5) {
-                Text("Antigravity Not Running")
+                Text("Antigravity (Google) Not Running")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 
@@ -434,34 +552,59 @@ public struct MainUsageView: View {
                     .padding(.horizontal, 24)
             }
             
-            Button(action: {
-                service.refresh(forceDiscovery: true)
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Retry Gemini")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.28, green: 0.50, blue: 0.95), Color(red: 0.18, green: 0.38, blue: 0.88)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+            HStack(spacing: 10) {
+                Button(action: {
+                    service.refresh(forceDiscovery: true)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Retry Antigravity")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 0.28, green: 0.50, blue: 0.95), Color(red: 0.18, green: 0.38, blue: 0.88)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
-                )
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    ProcessDiscovery.launchAntigravityApp()
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Launch App")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
@@ -469,13 +612,18 @@ public struct MainUsageView: View {
     
     // MARK: - ChatGPT Views
     
-    private var chatgptContentView: some View {
+    private var chatgptCards: some View {
         ChatGPTQuotaCardView(
             account: service.codexAccount,
             rateLimits: service.codexRateLimits,
-            usage: service.codexUsage
+            usage: service.codexUsage,
+            service: service
         )
-        .padding(14)
+    }
+    
+    private var chatgptContentView: some View {
+        chatgptCards
+            .padding(14)
     }
     
     private var chatgptOfflineView: some View {
@@ -514,45 +662,70 @@ public struct MainUsageView: View {
             }
             
             VStack(spacing: 5) {
-                Text("ChatGPT / Codex Not Connected")
+                Text("ChatGPT (OpenAI) Not Connected")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 
-                Text("Ensure ChatGPT.app is installed and signed in. AIUsage reads limits directly from the bundled Codex runtime.")
+                Text("Ensure ChatGPT.app is installed and signed in. AIUsage reads limits directly from the local ChatGPT runtime.")
                     .font(.system(size: 11.5))
                     .foregroundColor(.white.opacity(0.60))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
             }
             
-            Button(action: {
-                service.refresh()
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Retry ChatGPT")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.14, green: 0.68, blue: 0.48), Color(red: 0.08, green: 0.50, blue: 0.35)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+            HStack(spacing: 10) {
+                Button(action: {
+                    service.refresh()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Retry ChatGPT")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 0.14, green: 0.68, blue: 0.48), Color(red: 0.08, green: 0.50, blue: 0.35)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
-                )
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    CodexDiscovery.launchChatGPTApp()
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Launch App")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)

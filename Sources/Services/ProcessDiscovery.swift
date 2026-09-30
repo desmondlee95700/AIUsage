@@ -189,4 +189,31 @@ public class ProcessDiscovery {
         let session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
         return testEndpoint(port: server.port, token: server.csrfToken, session: session)
     }
+    
+    public static func launchAntigravityApp() {
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
+        let candidatePaths = [
+            "/Applications/Antigravity.app",
+            "/Applications/Antigravity IDE.app",
+            "\(home)/Applications/Antigravity.app",
+            "\(home)/Applications/Antigravity IDE.app"
+        ]
+        for path in candidatePaths {
+            if fileManager.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+                return
+            }
+        }
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity") ??
+                         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity-ide") {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+    }
 }

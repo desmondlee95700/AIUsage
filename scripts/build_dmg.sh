@@ -36,5 +36,12 @@ hdiutil create \
 # Ad-hoc sign DMG
 codesign --force --sign - "$DMG_FILE" 2>/dev/null || true
 
+# Also create versioned DMG copy if Info.plist has CFBundleShortVersionString
+VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$DIR/AIUsage.app/Contents/Info.plist" 2>/dev/null || echo "")
+if [ -n "$VERSION" ]; then
+  cp "$DMG_FILE" "$DIR/AIUsage-v${VERSION}.dmg"
+  echo "📦 Also created versioned artifact: $DIR/AIUsage-v${VERSION}.dmg"
+fi
+
 rm -rf "$STAGING_DIR"
 echo "✅ DMG successfully created at: $DMG_FILE"

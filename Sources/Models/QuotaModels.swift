@@ -5,20 +5,31 @@ import Foundation
 public enum AIProvider: String, CaseIterable, Codable, Identifiable {
     case gemini = "gemini"
     case chatgpt = "chatgpt"
+    case claude = "claude"
     
     public var id: String { rawValue }
     
     public var displayName: String {
         switch self {
-        case .gemini: return "Gemini"
+        case .gemini: return "Antigravity"
         case .chatgpt: return "ChatGPT"
+        case .claude: return "Claude"
+        }
+    }
+    
+    public var fullName: String {
+        switch self {
+        case .gemini: return "Antigravity (Google)"
+        case .chatgpt: return "ChatGPT (OpenAI)"
+        case .claude: return "Claude (Anthropic)"
         }
     }
     
     public var subtitle: String {
         switch self {
-        case .gemini: return "Antigravity"
-        case .chatgpt: return "Codex Runtime"
+        case .gemini: return "Google"
+        case .chatgpt: return "OpenAI"
+        case .claude: return "Anthropic"
         }
     }
     
@@ -26,6 +37,7 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .gemini: return "sparkles"
         case .chatgpt: return "circle.hexagongrid"
+        case .claude: return "asterisk"
         }
     }
     
@@ -33,6 +45,36 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .gemini: return "✦"
         case .chatgpt: return "✷"
+        case .claude: return "✽"
+        }
+    }
+}
+
+// MARK: - Provider Focus Mode (Syncs Popover & Menu Bar)
+
+public enum ProviderFocusMode: String, CaseIterable, Codable, Identifiable {
+    case gemini = "gemini"
+    case chatgpt = "chatgpt"
+    case claude = "claude"
+    case both = "both"
+    
+    public var id: String { rawValue }
+    
+    public var displayName: String {
+        switch self {
+        case .gemini: return "Antigravity (Google)"
+        case .chatgpt: return "ChatGPT (OpenAI)"
+        case .claude: return "Claude (Anthropic)"
+        case .both: return "Both (Antigravity & ChatGPT)"
+        }
+    }
+    
+    public var shortName: String {
+        switch self {
+        case .gemini: return "Antigravity"
+        case .chatgpt: return "ChatGPT"
+        case .claude: return "Claude"
+        case .both: return "Both"
         }
     }
 }
@@ -315,6 +357,102 @@ public struct CodexCreditsSnapshot: Codable {
 
 public struct CodexRateLimitResetCreditsSummary: Codable {
     public let availableCount: Int
+    public let credits: [CodexRateLimitResetCredit]?
+}
+
+public struct CodexRateLimitResetCredit: Codable, Identifiable {
+    public var id: String {
+        creditId ?? "\(resetType ?? "reset")-\(expiresAt ?? 0)"
+    }
+    
+    public let creditId: String?
+    public let resetType: String?
+    public let status: String?
+    public let grantedAt: Int?
+    public let expiresAt: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case creditId = "creditId"
+        case creditIdSnake = "credit_id"
+        case id = "id"
+        case resetType = "resetType"
+        case resetTypeSnake = "reset_type"
+        case status = "status"
+        case grantedAt = "grantedAt"
+        case grantedAtSnake = "granted_at"
+        case expiresAt = "expiresAt"
+        case expiresAtSnake = "expires_at"
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.creditId = try? container.decodeIfPresent(String.self, forKey: .creditId)
+            ?? container.decodeIfPresent(String.self, forKey: .creditIdSnake)
+            ?? container.decodeIfPresent(String.self, forKey: .id)
+        self.resetType = try? container.decodeIfPresent(String.self, forKey: .resetType)
+            ?? container.decodeIfPresent(String.self, forKey: .resetTypeSnake)
+        self.status = try? container.decodeIfPresent(String.self, forKey: .status)
+        
+        if let ts = try? container.decodeIfPresent(Int.self, forKey: .grantedAt) {
+            self.grantedAt = ts
+        } else if let tsSnake = try? container.decodeIfPresent(Int.self, forKey: .grantedAtSnake) {
+            self.grantedAt = tsSnake
+        } else if let str = try? container.decodeIfPresent(String.self, forKey: .grantedAt), let val = Int(str) {
+            self.grantedAt = val
+        } else {
+            self.grantedAt = nil
+        }
+        
+        if let ts = try? container.decodeIfPresent(Int.self, forKey: .expiresAt) {
+            self.expiresAt = ts
+        } else if let tsSnake = try? container.decodeIfPresent(Int.self, forKey: .expiresAtSnake) {
+            self.expiresAt = tsSnake
+        } else if let str = try? container.decodeIfPresent(String.self, forKey: .expiresAt) {
+            if let val = Int(str) {
+                self.expiresAt = val
+            } else {
+                let isoFormatter = ISO8601DateFormatter()
+                if let d = isoFormatter.date(from: str) {
+                    self.expiresAt = Int(d.timeIntervalSince1970)
+                } else {
+                    self.expiresAt = nil
+                }
+            }
+        } else {
+            self.expiresAt = nil
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(creditId, forKey: .creditId)
+        try container.encodeIfPresent(resetType, forKey: .resetType)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(grantedAt, forKey: .grantedAt)
+        try container.encodeIfPresent(expiresAt, forKey: .expiresAt)
+    }
+    
+    public var formattedResetType: String {
+        if let rt = resetType, !rt.isEmpty {
+            return rt
+        }
+        return "Full reset (Weekly + 5 hr)"
+    }
+    
+    public var formattedExpiration: String {
+        guard let exp = expiresAt else { return "No expiration date" }
+        let date = Date(timeIntervalSince1970: TimeInterval(exp))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMMM"
+        let dateStr = formatter.string(from: date)
+        
+        let now = Date()
+        let diff = date.timeIntervalSince(now)
+        if diff <= 0 {
+            return "Expired"
+        }
+        return "Expires \(dateStr)"
+    }
 }
 
 public struct CodexUsageResponse: Codable {

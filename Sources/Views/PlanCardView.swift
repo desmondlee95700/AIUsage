@@ -5,6 +5,7 @@ public struct PlanCardView: View {
     public let email: String?
     public let name: String?
     @State private var isUpgradeHovered: Bool = false
+    @State private var isLaunchHovered: Bool = false
     
     public init(userTier: UserTier?, email: String? = nil, name: String? = nil) {
         self.userTier = userTier
@@ -27,9 +28,40 @@ public struct PlanCardView: View {
                         .foregroundColor(Color(red: 0.98, green: 0.78, blue: 0.25))
                 }
                 
-                Text("AntiGravity Subscriptions")
+                Text("Antigravity (Google) Subscription")
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.white.opacity(0.85))
+                
+                Spacer()
+                
+                Button(action: {
+                    ProcessDiscovery.launchAntigravityApp()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text("Launch App")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.white.opacity(isLaunchHovered ? 1.0 : 0.80))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(isLaunchHovered ? 0.15 : 0.08))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(isLaunchHovered ? 0.35 : 0.16), lineWidth: 0.8)
+                    )
+                    .scaleEffect(isLaunchHovered ? 1.03 : 1.0)
+                    .animation(LiquidGlassTokens.interactiveSpring, value: isLaunchHovered)
+                }
+                .buttonStyle(.plain)
+                .help("Launch Antigravity desktop app")
+                .onHover { hovering in
+                    isLaunchHovered = hovering
+                }
             }
             
             HStack(alignment: .center, spacing: 14) {

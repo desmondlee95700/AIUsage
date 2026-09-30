@@ -89,4 +89,18 @@ public struct CodexDiscovery {
         // needs an executable runtime it can launch with `app-server`.
         findCodexBinary() != nil
     }
+    
+    public static func launchChatGPTApp() {
+        for appURL in chatGPTApplicationURLs() {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+        
+        // Fallback to web if desktop app is not installed
+        if let webURL = URL(string: "https://chatgpt.com") {
+            NSWorkspace.shared.open(webURL)
+        }
+    }
 }
