@@ -21,10 +21,15 @@ Welcome to the **AIUsage** codebase. This document outlines architectural standa
 ```
 AIUsage/
 ├── Package.swift               # SPM manifest (Swift 5.9+, macOS v14+)
-├── build_app.sh                # App bundle builder & code-signing script
 ├── README.md                   # User documentation
 ├── AGENTS.md                   # Canonical agent operational guide
 ├── GEMINI.md -> AGENTS.md      # Symlink for Gemini CLI / Antigravity rule loading
+├── scripts/                    # Build and packaging automation
+│   ├── build_app.sh            # App bundle compiler & packaging script
+│   └── build_dmg.sh            # Distributable compressed DMG builder
+├── Assets/                     # Application icons and branding assets
+│   ├── AppIcon.icns            # Multi-scale Apple ICNS icon
+│   └── AppIcon.png             # Master 1024x1024 icon
 ├── .agents/skills/             # Workspace-level skills
 │   └── liquid-glass-macos27/   # macOS 27 Liquid Glass UI design skill
 └── Sources/
@@ -33,11 +38,13 @@ AIUsage/
     ├── Models/                 # Quota models, bucket structures, user tier definitions
     ├── Services/               # Connect-RPC loopback client & Antigravity auto-discovery
     └── Views/                  # SwiftUI components:
-        ├── MainUsageView.swift         # Root popover view & header/footer chrome
+        ├── MainUsageView.swift         # Root popover view & header chrome
         ├── QuotaCardView.swift         # Quota group cards & bucket progress rows
         ├── CircularProgressView.swift  # Dynamic circular quota progress gauges
         ├── PlanCardView.swift          # User tier badge & subscription management
-        └── CreditsCardView.swift       # Prompt & flow credit indicators
+        ├── CreditsCardView.swift       # Prompt & flow credit indicators
+        ├── LiquidGlass.swift           # macOS 27 Liquid Glass design system helpers
+        └── AppIconHelper.swift         # Dynamic app icon loader & cache
 ```
 
 ---
@@ -85,11 +92,11 @@ Execute commands directly from the repository root:
   ```
 - **Build & Package macOS App Bundle**:
   ```bash
-  ./build_app.sh
+  ./scripts/build_app.sh
   ```
 - **Build Distributable DMG**:
   ```bash
-  ./build_dmg.sh
+  ./scripts/build_dmg.sh
   ```
 - **Launch Application**:
   ```bash

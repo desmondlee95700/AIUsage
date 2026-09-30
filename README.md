@@ -55,10 +55,10 @@ git clone https://github.com/desmondlee95700/AIUsage.git
 cd AIUsage
 
 # Build and package the .app bundle
-./build_app.sh
+./scripts/build_app.sh
 
 # Or create a distributable compressed DMG
-./build_dmg.sh
+./scripts/build_dmg.sh
 
 # Launch the app
 open AIUsage.app

@@ -15,9 +15,20 @@ public enum AppIconHelper {
            let image = NSImage(contentsOfFile: path) {
             return image
         }
-        let fallbackPath = "/Users/dessy/Documents/sidehustle/AIUsage/Assets/AppIcon.png"
-        if FileManager.default.fileExists(atPath: fallbackPath),
-           let image = NSImage(contentsOfFile: fallbackPath) {
+        if let path = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
+           let image = NSImage(contentsOfFile: path) {
+            return image
+        }
+        
+        // Portable dev fallback relative to this source file
+        let currentFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = currentFile
+            .deletingLastPathComponent() // Views
+            .deletingLastPathComponent() // Sources
+            .deletingLastPathComponent() // Project root
+        let assetPath = projectRoot.appendingPathComponent("Assets/AppIcon.png").path
+        if FileManager.default.fileExists(atPath: assetPath),
+           let image = NSImage(contentsOfFile: assetPath) {
             return image
         }
         return nil

@@ -1,11 +1,12 @@
 #!/bin/bash
 set -e
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Project root directory
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
 echo "🔨 Building AIUsage.app..."
-./build_app.sh
+"$DIR/scripts/build_app.sh"
 
 DMG_NAME="AIUsage"
 DMG_FILE="$DIR/${DMG_NAME}.dmg"
