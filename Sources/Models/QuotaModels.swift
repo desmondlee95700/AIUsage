@@ -1,6 +1,43 @@
 import Foundation
 
-// MARK: - Quota Summary Models
+// MARK: - AI Provider Enum
+
+public enum AIProvider: String, CaseIterable, Codable, Identifiable {
+    case gemini = "gemini"
+    case chatgpt = "chatgpt"
+    
+    public var id: String { rawValue }
+    
+    public var displayName: String {
+        switch self {
+        case .gemini: return "Gemini"
+        case .chatgpt: return "ChatGPT"
+        }
+    }
+    
+    public var subtitle: String {
+        switch self {
+        case .gemini: return "Antigravity"
+        case .chatgpt: return "Codex Runtime"
+        }
+    }
+    
+    public var symbolIcon: String {
+        switch self {
+        case .gemini: return "sparkles"
+        case .chatgpt: return "circle.hexagongrid"
+        }
+    }
+    
+    public var badgeGlyph: String {
+        switch self {
+        case .gemini: return "✦"
+        case .chatgpt: return "✷"
+        }
+    }
+}
+
+// MARK: - Quota Summary Models (Gemini / Antigravity)
 
 public struct QuotaSummaryResponse: Codable {
     public let response: QuotaSummaryData?
@@ -77,7 +114,7 @@ public struct QuotaBucket: Codable, Identifiable {
     }
 }
 
-// MARK: - User Status Models
+// MARK: - User Status Models (Gemini / Antigravity)
 
 public struct UserStatusResponse: Codable {
     public let userStatus: UserStatusData?
@@ -103,11 +140,170 @@ public struct PlanStatus: Codable {
     public let availableFlowCredits: Int?
 }
 
+// MARK: - Codex Models (ChatGPT.app)
+
+public struct CodexAccountResponse: Codable {
+    public let account: CodexAccountInfo?
+    public let requiresOpenaiAuth: Bool?
+    public let workspaceRouting: CodexWorkspaceRouting?
+}
+
+public struct CodexAccountInfo: Codable {
+    public let type: String?
+    public let email: String?
+    public let planType: String?
+    
+    public var formattedPlan: String {
+        guard let plan = planType else { return "ChatGPT" }
+        switch plan.lowercased() {
+        case "free": return "ChatGPT Free"
+        case "plus": return "ChatGPT Plus"
+        case "pro": return "ChatGPT Pro"
+        case "team": return "ChatGPT Team"
+        case "business": return "ChatGPT Business"
+        case "enterprise": return "ChatGPT Enterprise"
+        default: return "ChatGPT (\(plan.capitalized))"
+        }
+    }
+}
+
+public struct CodexWorkspaceRouting: Codable {
+    public let chatgptAccountId: String?
+    public let backendOrigin: String?
+    public let accountRoutingOverride: String?
+}
+
+public struct CodexRateLimitsResponse: Codable {
+    public let accountId: String?
+    public let ordinaryUsageAllowed: Bool?
+    public let rateLimits: CodexRateLimitSnapshot?
+    public let rateLimitsByLimitId: [String: CodexRateLimitSnapshot]?
+    public let rateLimitResetCredits: CodexRateLimitResetCreditsSummary?
+}
+
+public struct CodexRateLimitSnapshot: Codable {
+    public let limitId: String?
+    public let limitName: String?
+    public let normalModelSlug: String?
+    public let primary: CodexRateLimitWindow?
+    public let secondary: CodexRateLimitWindow?
+    public let credits: CodexCreditsSnapshot?
+    public let planType: String?
+    public let spendControlReached: Bool?
+}
+
+public struct CodexRateLimitWindow: Codable {
+    public let usedPercent: Int
+    public let windowDurationMins: Int?
+    public let resetsAt: Int? // Unix timestamp (seconds)
+    
+    public var remainingPercent: Int {
+        return max(0, min(100, 100 - usedPercent))
+    }
+    
+    public var remainingFraction: Double {
+        return Double(remainingPercent) / 100.0
+    }
+    
+    public var formattedDuration: String {
+        guard let mins = windowDurationMins else { return "Rolling window" }
+        let days = mins / 1440
+        let hours = (mins % 1440) / 60
+        if days > 0 {
+            return "\(days)d window"
+        } else if hours > 0 {
+            return "\(hours)h window"
+        } else {
+            return "\(mins)m window"
+        }
+    }
+    
+    public var formattedResetCountdown: String? {
+        guard let timestamp = resetsAt else { return nil }
+        let resetDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let diff = resetDate.timeIntervalSince(Date())
+        if diff <= 0 {
+            return "Refreshes soon"
+        }
+        let hours = Int(diff) / 3600
+        let minutes = (Int(diff) % 3600) / 60
+        let days = hours / 24
+        let remainingHours = hours % 24
+        
+        if days > 0 {
+            return "Resets in \(days)d \(remainingHours)h"
+        } else if hours > 0 {
+            return "Resets in \(hours)h \(minutes)m"
+        } else {
+            return "Resets in \(minutes)m"
+        }
+    }
+}
+
+public struct CodexCreditsSnapshot: Codable {
+    public let hasCredits: Bool
+    public let unlimited: Bool
+    public let balance: String?
+}
+
+public struct CodexRateLimitResetCreditsSummary: Codable {
+    public let availableCount: Int
+}
+
+public struct CodexUsageResponse: Codable {
+    public let summary: CodexUsageSummary?
+    public let dailyUsageBuckets: [CodexDailyUsageBucket]?
+}
+
+public struct CodexUsageSummary: Codable {
+    public let lifetimeTokens: Int?
+    public let peakDailyTokens: Int?
+    public let longestStreakDays: Int?
+    public let currentStreakDays: Int?
+    public let longestRunningTurnSec: Int?
+    
+    public var formattedLifetimeTokens: String {
+        guard let tokens = lifetimeTokens else { return "0" }
+        if tokens >= 1_000_000 {
+            return String(format: "%.1fM", Double(tokens) / 1_000_000.0)
+        } else if tokens >= 1_000 {
+            return String(format: "%.1fK", Double(tokens) / 1_000.0)
+        }
+        return "\(tokens)"
+    }
+    
+    public var formattedPeakTokens: String {
+        guard let tokens = peakDailyTokens else { return "0" }
+        if tokens >= 1_000_000 {
+            return String(format: "%.1fM", Double(tokens) / 1_000_000.0)
+        } else if tokens >= 1_000 {
+            return String(format: "%.1fK", Double(tokens) / 1_000.0)
+        }
+        return "\(tokens)"
+    }
+}
+
+public struct CodexDailyUsageBucket: Codable, Identifiable {
+    public var id: String { startDate }
+    public let startDate: String
+    public let tokens: Int
+    
+    public var formattedTokens: String {
+        if tokens >= 1_000_000 {
+            return String(format: "%.1fM", Double(tokens) / 1_000_000.0)
+        } else if tokens >= 1_000 {
+            return String(format: "%.1fK", Double(tokens) / 1_000.0)
+        }
+        return "\(tokens)"
+    }
+}
+
 // MARK: - App Preferences
 
 public enum MenuBarDisplayMode: String, CaseIterable, Codable {
-    case weekly = "Weekly Quota (e.g. 71%)"
-    case weeklyAnd5h = "Weekly & 5h (e.g. 71% · 100%)"
+    case dual = "Dual: ✦ Gemini · ✷ ChatGPT"
+    case activeProvider = "Active Provider Quota"
+    case weekly = "Gemini Weekly Only"
     case iconOnly = "Icon Only"
 }
 

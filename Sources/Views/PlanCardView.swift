@@ -14,10 +14,18 @@ public struct PlanCardView: View {
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color(red: 0.98, green: 0.78, blue: 0.25))
+            HStack(spacing: 6) {
+                if let icon = AppIconHelper.antigravityIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                } else {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(red: 0.98, green: 0.78, blue: 0.25))
+                }
                 
                 Text("Current Plan")
                     .font(.system(size: 12.5, weight: .semibold))

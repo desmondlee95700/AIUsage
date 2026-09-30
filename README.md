@@ -21,29 +21,30 @@ Download the latest pre-compiled macOS disk image:
 
 ## ✨ Features
 
-- **Menu Bar At-A-Glance Status**:
-  - Live weekly percentage (e.g. `✦ 71%`) directly in your macOS menu bar.
-  - Color-coded status indicator (Green for healthy, Amber for moderate, Red when low).
-  - Hover tooltip displaying active account email and model quota status.
-- **Detailed Model Quota Breakdown**:
-  - **Gemini Models** (Gemini Flash, Gemini Pro): Weekly Limit Remaining & Rolling 5-Hour Limit Remaining with live circular progress rings.
-  - **Claude & GPT Models** (Claude Sonnet, Claude Opus, GPT-OSS): Track third-party quota allowances and reset schedules.
-  - Dynamic reset countdowns (e.g. *"Fully refreshes in 2 days, 6 hours"*).
+- **Dual AI Provider Support (Gemini & ChatGPT)**:
+  - **Gemini (Antigravity)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
+  - **ChatGPT (Codex)**: Live quota tracking, 30-day rolling window, reset credits, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
+- **At-A-Glance Dual Status & Awareness**:
+  - **Dual Menu Bar Mode**: Displays both models side-by-side (e.g. `✦ 71% · ✷ 29%`) so you always know both limits at a glance.
+  - **Liquid Glass Provider Switcher**: Prominent top tab bar with live remaining percentage pills (`[ ✦ Gemini 71% ]  [ ✷ ChatGPT 29% ]`) and connection indicators.
+  - **Multi-Model Tooltip**: Hovering over the menu bar item shows a detailed breakdown for both Gemini and ChatGPT.
+- **Detailed Quota Breakdown**:
+  - **Gemini Models**: Weekly Limit Remaining & Rolling 5-Hour Limit Remaining with live circular progress rings.
+  - **ChatGPT Codex**: Remaining model quota %, exact countdown to reset, reset credit allowances, and daily token activity.
+  - Dynamic reset countdowns (e.g. *"Fully refreshes in 2 days, 6 hours"*, *"Resets in 11d 15h"*).
 - **Plan & Account Identity**:
-  - Displays your active logged-in Google / Antigravity account email.
-  - Current tier badge (e.g. **Google AI Pro**).
-  - One-click **Upgrade** button to manage subscription.
+  - Displays your active logged-in Google / Antigravity and ChatGPT account emails and subscription tiers.
 - **macOS 27 Liquid Glass Design**:
   - Translucent refractive substrate (`.ultraThinMaterial` / `.thinMaterial`).
   - Specular rim refraction highlight with continuous bevelled corners.
   - Viscous fluid spring mechanics and auto-expanding popover (no scrollbars).
 - **Zero Token Overhead & Complete Privacy**:
-  - Communicates directly via high-speed local loopback Connect-RPC (`127.0.0.1`) with the local Antigravity server.
+  - Local loopback Connect-RPC for Gemini; local JSON-RPC stdio for ChatGPT Codex.
   - Consumes **0 prompt tokens**.
   - No external servers, no third-party telemetry, no credentials stored.
 - **Auto-Discovery & Auto-Reconnection**:
-  - Automatically discovers running instances of Antigravity 2.0 desktop app and Antigravity IDE.
-  - Seamlessly re-probes and reconnects whenever Antigravity is restarted.
+  - Automatically discovers running instances of Antigravity and ChatGPT Codex.
+  - Seamlessly re-probes and reconnects whenever either application is restarted.
 
 ---
 

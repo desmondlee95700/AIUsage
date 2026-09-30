@@ -22,13 +22,9 @@ mkdir -p "$RESOURCES_DIR"
 # Copy binary
 cp "$DIR/.build/release/AIUsage" "$MACOS_DIR/AIUsage"
 
-# Copy AppIcon
-if [ -f "$DIR/Assets/AppIcon.icns" ]; then
-    cp "$DIR/Assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
-fi
-if [ -f "$DIR/Assets/AppIcon.png" ]; then
-    cp "$DIR/Assets/AppIcon.png" "$RESOURCES_DIR/AppIcon.png"
-fi
+# Copy all Assets
+cp -R "$DIR/Assets/"* "$RESOURCES_DIR/" 2>/dev/null || true
+
 
 # Create Info.plist
 cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
@@ -53,9 +49,9 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

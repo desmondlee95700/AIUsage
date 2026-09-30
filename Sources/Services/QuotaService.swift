@@ -5,14 +5,46 @@ import Combine
 public class QuotaService: ObservableObject {
     public static let shared = QuotaService()
     
-    @Published public var isConnected: Bool = false
-    @Published public var isLoading: Bool = false
-    @Published public var errorMessage: String? = nil
-    @Published public var lastUpdated: Date? = nil
-    @Published public var discoveredServer: DiscoveredServer? = nil
+    // Active Provider Selection
+    @Published public var activeProvider: AIProvider {
+        didSet {
+            UserDefaults.standard.set(activeProvider.rawValue, forKey: "activeProvider")
+            updateMenuBarCallback?()
+        }
+    }
     
+    // General Status
+    @Published public var isLoading: Bool = false
+    @Published public var lastUpdated: Date? = nil
+    
+    // Gemini / Antigravity State
+    @Published public var isGeminiConnected: Bool = false
     @Published public var quotaSummary: QuotaSummaryData? = nil
     @Published public var userStatus: UserStatusData? = nil
+    @Published public var geminiErrorMessage: String? = nil
+    @Published public var discoveredServer: DiscoveredServer? = nil
+    
+    // ChatGPT / Codex State
+    @Published public var isCodexConnected: Bool = false
+    @Published public var codexRateLimits: CodexRateLimitsResponse? = nil
+    @Published public var codexAccount: CodexAccountInfo? = nil
+    @Published public var codexUsage: CodexUsageSummary? = nil
+    @Published public var codexErrorMessage: String? = nil
+    
+    // Backward compatibility property for isConnected (checks current provider)
+    public var isConnected: Bool {
+        switch activeProvider {
+        case .gemini: return isGeminiConnected
+        case .chatgpt: return isCodexConnected
+        }
+    }
+    
+    public var errorMessage: String? {
+        switch activeProvider {
+        case .gemini: return geminiErrorMessage
+        case .chatgpt: return codexErrorMessage
+        }
+    }
     
     // User preferences
     @Published public var displayMode: MenuBarDisplayMode {
@@ -35,8 +67,11 @@ public class QuotaService: ObservableObject {
     private let session: URLSession
     
     public init() {
+        let savedProvider = UserDefaults.standard.string(forKey: "activeProvider")
+        self.activeProvider = AIProvider(rawValue: savedProvider ?? "") ?? .gemini
+        
         let savedMode = UserDefaults.standard.string(forKey: "menuBarDisplayMode")
-        self.displayMode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .weekly
+        self.displayMode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .dual
         
         let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
         self.refreshInterval = RefreshInterval(rawValue: savedInterval == 0 ? 60 : savedInterval) ?? .oneMinute
@@ -62,20 +97,46 @@ public class QuotaService: ObservableObject {
         
         DispatchQueue.main.async {
             self.isLoading = true
-            self.errorMessage = nil
         }
         
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let dispatchGroup = DispatchGroup()
+        
+        // 1. Refresh Gemini (Antigravity)
+        dispatchGroup.enter()
+        refreshGemini(forceDiscovery: forceDiscovery) {
+            dispatchGroup.leave()
+        }
+        
+        // 2. Refresh ChatGPT (Codex)
+        dispatchGroup.enter()
+        refreshCodex {
+            dispatchGroup.leave()
+        }
+        
+        dispatchGroup.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
+            self.isLoading = false
+            self.lastUpdated = Date()
+            self.updateMenuBarCallback?()
+        }
+    }
+    
+    // MARK: - Gemini Refresh Pipeline
+    
+    private func refreshGemini(forceDiscovery: Bool, completion: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else {
+                completion()
+                return
+            }
             
             guard let server = ProcessDiscovery.discover(forceRefresh: forceDiscovery) else {
                 DispatchQueue.main.async {
-                    self.isConnected = false
+                    self.isGeminiConnected = false
                     self.discoveredServer = nil
-                    self.isLoading = false
-                    self.errorMessage = "Antigravity is not running. Please launch Antigravity to view model usage."
-                    self.updateMenuBarCallback?()
+                    self.geminiErrorMessage = "Antigravity is not running. Launch Antigravity to monitor Gemini quotas."
                 }
+                completion()
                 return
             }
             
@@ -84,7 +145,6 @@ public class QuotaService: ObservableObject {
             var fetchedStatus: UserStatusData?
             var quotaError: Error?
             
-            // 1. Fetch Quota Summary
             group.enter()
             self.fetchQuotaSummary(server: server) { result in
                 switch result {
@@ -96,7 +156,6 @@ public class QuotaService: ObservableObject {
                 group.leave()
             }
             
-            // 2. Fetch User Status
             group.enter()
             self.fetchUserStatus(server: server) { result in
                 switch result {
@@ -109,22 +168,47 @@ public class QuotaService: ObservableObject {
             }
             
             group.notify(queue: .main) {
-                self.isLoading = false
                 if let quota = fetchedQuota {
-                    self.isConnected = true
+                    self.isGeminiConnected = true
                     self.discoveredServer = server
                     self.quotaSummary = quota
                     self.userStatus = fetchedStatus
-                    self.lastUpdated = Date()
-                    self.errorMessage = nil
+                    self.geminiErrorMessage = nil
                 } else {
-                    self.isConnected = false
-                    self.errorMessage = quotaError?.localizedDescription ?? "Failed to fetch model quota from Antigravity."
+                    self.isGeminiConnected = false
+                    self.geminiErrorMessage = quotaError?.localizedDescription ?? "Failed to fetch model quota from Antigravity."
                 }
-                self.updateMenuBarCallback?()
+                completion()
             }
         }
     }
+    
+    // MARK: - Codex / ChatGPT Refresh Pipeline
+    
+    private func refreshCodex(completion: @escaping () -> Void) {
+        CodexService.shared.fetch { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else {
+                    completion()
+                    return
+                }
+                switch result {
+                case .success(let payload):
+                    self.isCodexConnected = true
+                    self.codexRateLimits = payload.rateLimits
+                    self.codexAccount = payload.account
+                    self.codexUsage = payload.usage
+                    self.codexErrorMessage = nil
+                case .failure(let err):
+                    self.isCodexConnected = false
+                    self.codexErrorMessage = err.localizedDescription
+                }
+                completion()
+            }
+        }
+    }
+    
+    // MARK: - Gemini HTTP Calls
     
     private func fetchQuotaSummary(server: DiscoveredServer, completion: @escaping (Result<QuotaSummaryData, Error>) -> Void) {
         guard let url = URL(string: "https://127.0.0.1:\(server.port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") else {
@@ -138,9 +222,9 @@ public class QuotaService: ObservableObject {
         request.setValue(server.csrfToken, forHTTPHeaderField: "X-Codeium-Csrf-Token")
         request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
         request.httpBody = Data("{}".utf8)
-        request.timeoutInterval = 5.0
+        request.timeoutInterval = 4.0
         
-        session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { data, _, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -174,9 +258,9 @@ public class QuotaService: ObservableObject {
         request.setValue(server.csrfToken, forHTTPHeaderField: "X-Codeium-Csrf-Token")
         request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
         request.httpBody = Data("{}".utf8)
-        request.timeoutInterval = 5.0
+        request.timeoutInterval = 4.0
         
-        session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { data, _, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -198,7 +282,7 @@ public class QuotaService: ObservableObject {
         }.resume()
     }
     
-    // MARK: - Menu Bar Formatter Helpers
+    // MARK: - Computed Properties for Helpers
     
     public var primaryWeeklyBucket: QuotaBucket? {
         guard let groups = quotaSummary?.groups else { return nil }
@@ -212,32 +296,85 @@ public class QuotaService: ObservableObject {
         return group?.buckets.first { $0.window == "5h" || $0.bucketId.contains("5h") }
     }
     
+    public var geminiPercentage: Int {
+        primaryWeeklyBucket?.percentage ?? 0
+    }
+    
+    public var codexPrimaryWindow: CodexRateLimitWindow? {
+        codexRateLimits?.rateLimits?.primary
+    }
+    
+    public var codexRemainingPercentage: Int {
+        codexPrimaryWindow?.remainingPercent ?? 0
+    }
+    
+    public var codexUsedPercentage: Int {
+        codexPrimaryWindow?.usedPercent ?? 0
+    }
+    
+    // MARK: - Menu Bar Formatter Helpers
+    
     public var menuBarTitle: String {
-        guard isConnected else {
-            return " Antigravity Offline"
-        }
-        
-        let weeklyPct = primaryWeeklyBucket?.percentage ?? 0
-        let fiveHPct = primary5hBucket?.percentage ?? 100
+        let geminiStr = isGeminiConnected ? "\(geminiPercentage)%" : "Offline"
+        let codexStr = isCodexConnected ? "\(codexRemainingPercentage)%" : "Offline"
         
         switch displayMode {
+        case .dual:
+            if !isGeminiConnected && !isCodexConnected {
+                return " Offline"
+            }
+            return " ✦ \(geminiStr) · ✷ \(codexStr)"
+            
+        case .activeProvider:
+            switch activeProvider {
+            case .gemini:
+                return isGeminiConnected ? " ✦ \(geminiPercentage)%" : " ✦ Offline"
+            case .chatgpt:
+                return isCodexConnected ? " ✷ \(codexRemainingPercentage)%" : " ✷ Offline"
+            }
+            
+        case .weekly:
+            return isGeminiConnected ? " \(geminiPercentage)%" : " Antigravity Offline"
+            
         case .iconOnly:
             return ""
-        case .weekly:
-            return " \(weeklyPct)%"
-        case .weeklyAnd5h:
-            return " \(weeklyPct)% · \(fiveHPct)%"
         }
     }
     
+    public var menuBarTooltip: String {
+        var lines: [String] = ["AIUsage — AI Model Quota Tracker"]
+        
+        if isGeminiConnected {
+            let tier = userStatus?.userTier?.name ?? "Connected"
+            let reset = primaryWeeklyBucket?.formattedResetCountdown ?? "Active"
+            lines.append("• ✦ Gemini: \(geminiPercentage)% remaining (\(tier)) · \(reset)")
+        } else {
+            lines.append("• ✦ Gemini: Offline (Launch Antigravity)")
+        }
+        
+        if isCodexConnected {
+            let plan = codexAccount?.formattedPlan ?? "Connected"
+            let reset = codexPrimaryWindow?.formattedResetCountdown ?? "Active"
+            lines.append("• ✷ ChatGPT: \(codexRemainingPercentage)% remaining (\(plan)) · \(reset)")
+        } else {
+            lines.append("• ✷ ChatGPT: Offline (Launch ChatGPT.app)")
+        }
+        
+        lines.append("Click to switch views or right-click for quick actions")
+        return lines.joined(separator: "\n")
+    }
+    
     public var statusTintColor: NSColor {
-        guard isConnected, let weeklyPct = primaryWeeklyBucket?.percentage else {
+        // Evaluate the active provider or lowest remaining percentage
+        let activePercent = activeProvider == .gemini ? (isGeminiConnected ? geminiPercentage : nil) : (isCodexConnected ? codexRemainingPercentage : nil)
+        
+        guard let pct = activePercent else {
             return .secondaryLabelColor
         }
         
-        if weeklyPct >= 50 {
+        if pct >= 50 {
             return NSColor(red: 0.13, green: 0.77, blue: 0.36, alpha: 1.0) // Green #22c55e
-        } else if weeklyPct >= 20 {
+        } else if pct >= 20 {
             return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 1.0) // Orange #f59e0b
         } else {
             return NSColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1.0) // Red #ef4444
