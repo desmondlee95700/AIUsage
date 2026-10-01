@@ -334,18 +334,10 @@ public struct CodexRateLimitWindow: Codable {
         if diff <= 0 {
             return "Refreshes soon"
         }
-        let hours = Int(diff) / 3600
-        let minutes = (Int(diff) % 3600) / 60
-        let days = hours / 24
-        let remainingHours = hours % 24
-        
-        if days > 0 {
-            return "Resets in \(days)d \(remainingHours)h"
-        } else if hours > 0 {
-            return "Resets in \(hours)h \(minutes)m"
-        } else {
-            return "Resets in \(minutes)m"
-        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM yyyy 'at' h:mm a"
+        return "Resets \(formatter.string(from: resetDate))"
     }
 }
 
@@ -433,25 +425,29 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
     }
     
     public var formattedResetType: String {
-        if let rt = resetType, !rt.isEmpty {
-            return rt
+        guard let rt = resetType, !rt.isEmpty else {
+            return "Resets Available"
         }
-        return "Full reset (Weekly + 5 hr)"
+        let lower = rt.lowercased().replacingOccurrences(of: "_", with: "")
+        if lower == "codexratelimits" || lower == "codexratelimit" || lower == "codex" || lower == "ratelimits" {
+            return "Resets Available"
+        }
+        return rt
     }
     
     public var formattedExpiration: String {
-        guard let exp = expiresAt else { return "No expiration date" }
+        guard let exp = expiresAt else { return "Ready to use" }
         let date = Date(timeIntervalSince1970: TimeInterval(exp))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMMM"
-        let dateStr = formatter.string(from: date)
-        
         let now = Date()
         let diff = date.timeIntervalSince(now)
         if diff <= 0 {
             return "Expired"
         }
-        return "Expires \(dateStr)"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM yyyy 'at' h:mm a"
+        let dateStr = formatter.string(from: date)
+        return "Resets \(dateStr)"
     }
 }
 

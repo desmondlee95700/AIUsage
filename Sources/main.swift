@@ -14,6 +14,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize status bar item and controller
         statusBarController = StatusBarController()
+        
+        // Request user notification permissions for low-quota spending alerts
+        NotificationManager.shared.requestAuthorization()
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

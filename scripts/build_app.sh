@@ -9,8 +9,8 @@ echo "🔨 Building release binary..."
 swift build -c release
 
 APP_NAME="AIUsage"
-APP_VERSION="1.1.9"
-APP_BUILD="10"
+APP_VERSION="2.0.0"
+APP_BUILD="11"
 APP_DIR="$DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -58,6 +58,8 @@ cat << EOF > "$CONTENTS_DIR/Info.plist"
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSUserNotificationAlertStyle</key>
+    <string>banner</string>
     <key>NSHighResolutionCapable</key>
     <string>true</string>
     <key>NSPrincipalClass</key>

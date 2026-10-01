@@ -72,6 +72,9 @@ public class QuotaService: ObservableObject {
     @Published public var resetActionMessage: String? = nil
     @Published public var resetActionIsSuccess: Bool = false
     
+    // Low Quota Spending Alert Tracking (tracks 30% and 10% thresholds per provider)
+    private var alertedThresholds: [String: Set<Int>] = [:]
+    
     // MARK: - Selected Providers (Multi-Choice Provider Focus)
     @Published public var selectedProviders: Set<AIProvider> {
         didSet {
@@ -387,6 +390,74 @@ public class QuotaService: ObservableObject {
             self.isLoading = false
             self.lastUpdated = Date()
             self.updateMenuBarCallback?()
+            self.checkLowQuotaNotifications()
+        }
+    }
+    
+    // MARK: - Low Quota Spending Alerts
+    
+    private func checkLowQuotaNotifications() {
+        // 1. ChatGPT (OpenAI)
+        if isCodexConnected {
+            if let remaining = codex5hPercentage ?? (codexActiveWindow != nil ? codexRemainingPercentage : nil) {
+                evaluateQuotaAlert(provider: "ChatGPT", remainingPercent: remaining)
+            }
+        }
+        
+        // 2. Antigravity (Google)
+        if isGeminiConnected {
+            let remaining = primary5hBucket?.percentage ?? primaryWeeklyBucket?.percentage ?? geminiPercentage
+            evaluateQuotaAlert(provider: "Antigravity", remainingPercent: remaining)
+        }
+        
+        // 3. Claude (Anthropic)
+        if isClaudeConnected {
+            // Only alert when numerical quota limits are available (Pro / Team tiers)
+            if let remaining = claude5hPercentage ?? claudeWeeklyPercentage {
+                evaluateQuotaAlert(provider: "Claude", remainingPercent: remaining)
+            }
+        }
+    }
+    
+    private func evaluateQuotaAlert(provider: String, remainingPercent: Int) {
+        guard remainingPercent >= 0 else { return }
+        
+        var fired = alertedThresholds[provider] ?? []
+        
+        // Threshold 1: <= 10% (Critical warning)
+        if remainingPercent <= 10 {
+            if !fired.contains(10) {
+                NotificationManager.shared.sendLowQuotaNotification(
+                    provider: provider,
+                    remainingQuota: "\(remainingPercent)%"
+                )
+                fired.insert(10)
+                fired.insert(30) // Mark 30% as also triggered if it dropped rapidly
+                alertedThresholds[provider] = fired
+            }
+        }
+        // Threshold 2: <= 30% (Early warning)
+        else if remainingPercent <= 30 {
+            if !fired.contains(30) {
+                NotificationManager.shared.sendLowQuotaNotification(
+                    provider: provider,
+                    remainingQuota: "\(remainingPercent)%"
+                )
+                fired.insert(30)
+                alertedThresholds[provider] = fired
+            }
+            // If quota is between 11% and 30%, rearm 10% in case it drops further
+            if fired.contains(10) {
+                fired.remove(10)
+                alertedThresholds[provider] = fired
+            }
+        }
+        // Quota has recovered or reset (> 30%)
+        else {
+            // Rearm both 30% and 10% alerts for next cycle
+            if !fired.isEmpty {
+                alertedThresholds[provider] = []
+            }
         }
     }
     

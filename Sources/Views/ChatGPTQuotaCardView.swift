@@ -412,7 +412,7 @@ public struct ChatGPTQuotaCardView: View {
                 VStack(spacing: 8) {
                     ForEach(0..<resets.availableCount, id: \.self) { _ in
                         resetCreditItem(
-                            title: "Full reset (Weekly + 5 hr)",
+                            title: "Resets Available",
                             subtitle: "Ready to use"
                         )
                     }
