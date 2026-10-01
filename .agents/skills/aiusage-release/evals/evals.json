@@ -1,0 +1,23 @@
+{
+  "skill_name": "aiusage-release",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Release a new patch version of AIUsage with version bump and GitHub release.",
+      "expected_output": "Inspect current version, bump patch version in AppVersion.swift and scripts/build_app.sh, build DMG via build_dmg.sh, git commit, tag vX.Y.Z, and publish via gh release create with attached DMGs.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Bump AIUsage to v2.2.0, generate universal DMG installers, and push a release to GitHub.",
+      "expected_output": "Execute minor version bump to 2.2.0, build signed DMG bundle, push branch and tag to origin main, and publish GitHub release with changelog.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Do a dry run release check for AIUsage to see what files will change and what release artifacts will be produced.",
+      "expected_output": "Run ./scripts/release.sh --dry-run or preview the version bump and build steps without making destructive git or release modifications.",
+      "files": []
+    }
+  ]
+}

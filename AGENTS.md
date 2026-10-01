@@ -26,12 +26,14 @@ AIUsage/
 ├── GEMINI.md -> AGENTS.md      # Symlink for Gemini CLI / Antigravity rule loading
 ├── scripts/                    # Build and packaging automation
 │   ├── build_app.sh            # App bundle compiler & packaging script
-│   └── build_dmg.sh            # Distributable compressed DMG builder
+│   ├── build_dmg.sh            # Distributable compressed DMG builder
+│   └── release.sh              # Automated release, tagging & GitHub publisher
 ├── Assets/                     # Application icons and branding assets
 │   ├── AppIcon.icns            # Multi-scale Apple ICNS icon
 │   └── AppIcon.png             # Master 1024x1024 icon
 ├── .agents/skills/             # Workspace-level skills
-│   └── liquid-glass-macos27/   # macOS 27 Liquid Glass UI design skill
+│   ├── liquid-glass-macos27/   # macOS 27 Liquid Glass UI design skill
+│   └── aiusage-release/        # Automated release & DMG publishing skill
 └── Sources/
     ├── main.swift              # AppKit lifecycle entry point & NSApplicationDelegate
     ├── MenuBar/                # Status item management & menu bar glyph rendering
@@ -98,13 +100,20 @@ Execute commands directly from the repository root:
   ```bash
   ./scripts/build_dmg.sh
   ```
+- **Automate Release, Tag & Publish (via aiusage-release)**:
+  ```bash
+  ./scripts/release.sh --patch
+  # Or preview with dry-run:
+  ./scripts/release.sh --dry-run --patch
+  ```
 - **Launch Application**:
   ```bash
   open AIUsage.app
   ```
-- **Validate Liquid Glass Skill (via skill-creator)**:
+- **Validate Skills (via skill-creator)**:
   ```bash
-  python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py ~/.gemini/skills/liquid-glass-macos27
+  python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py .agents/skills/liquid-glass-macos27
+  python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py .agents/skills/aiusage-release
   ```
 
 ---
