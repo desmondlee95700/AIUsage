@@ -22,7 +22,7 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
     
-    public func sendLowQuotaNotification(provider: String, remainingQuota: String) {
+    public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil) {
         let center = UNUserNotificationCenter.current()
         
         center.getNotificationSettings { [weak self] settings in
@@ -39,20 +39,24 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             if settings.authorizationStatus == .notDetermined {
                 self?.requestAuthorization { granted in
                     if granted {
-                        self?.postNotification(provider: provider, remainingQuota: remainingQuota)
+                        self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window)
                     }
                 }
                 return
             }
             
-            self?.postNotification(provider: provider, remainingQuota: remainingQuota)
+            self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window)
         }
     }
     
-    private func postNotification(provider: String, remainingQuota: String) {
+    private func postNotification(provider: String, remainingQuota: String, window: String? = nil) {
         let content = UNMutableNotificationContent()
-        content.title = "\(provider) Spending Alert"
-        content.body = "You only left \(remainingQuota) on \(provider) today"
+        content.title = "\(provider) Quota Alert"
+        if let window = window, !window.isEmpty {
+            content.body = "You have \(remainingQuota) quota remaining (\(window)) on \(provider)."
+        } else {
+            content.body = "You have \(remainingQuota) quota remaining on \(provider)."
+        }
         content.sound = .default
         
         let iconName: String = {

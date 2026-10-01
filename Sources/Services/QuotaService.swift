@@ -72,14 +72,26 @@ public class QuotaService: ObservableObject {
     @Published public var resetActionMessage: String? = nil
     @Published public var resetActionIsSuccess: Bool = false
     
-    // Low Quota Spending Alert Tracking (tracks 30% and 10% thresholds per provider)
+    // Low Quota Alert Tracking (tracks 30% and 10% thresholds per provider upon active quota drop)
     private var alertedThresholds: [String: Set<Int>] = [:]
+    private var lastKnownQuotaPercentages: [String: Int] = [:]
+    private var hasInitializedQuotaBaselines: Bool = false
     
     // MARK: - Selected Providers (Multi-Choice Provider Focus)
     @Published public var selectedProviders: Set<AIProvider> {
         didSet {
             let stringArray = selectedProviders.map { $0.rawValue }
             UserDefaults.standard.set(stringArray, forKey: "selectedProviders")
+            if !selectedProviders.contains(.gemini) {
+                isGeminiConnected = false
+                discoveredServer = nil
+            }
+            if !selectedProviders.contains(.chatgpt) {
+                isCodexConnected = false
+            }
+            if !selectedProviders.contains(.claude) {
+                isClaudeConnected = false
+            }
             updateMenuBarCallback?()
             onFocusModeChanged?()
         }
@@ -118,12 +130,14 @@ public class QuotaService: ObservableObject {
         } else {
             selectedProviders.insert(provider)
             dualActiveProvider = provider
+            refresh()
         }
     }
     
     public func selectOnlyProvider(_ provider: AIProvider) {
         selectedProviders = [provider]
         dualActiveProvider = provider
+        refresh()
     }
     
     public func selectAllProviders() {
@@ -133,6 +147,7 @@ public class QuotaService: ObservableObject {
         if isClaudeInstalled { all.insert(.claude) }
         if !all.isEmpty {
             selectedProviders = all
+            refresh()
         }
     }
     
@@ -345,8 +360,8 @@ public class QuotaService: ObservableObject {
         
         let dispatchGroup = DispatchGroup()
         
-        // 1. Refresh Gemini (Antigravity) if installed
-        if geminiInst {
+        // 1. Refresh Gemini (Antigravity) if installed and selected
+        if geminiInst && selectedProviders.contains(.gemini) {
             dispatchGroup.enter()
             refreshGemini(forceDiscovery: forceDiscovery) {
                 dispatchGroup.leave()
@@ -355,12 +370,14 @@ public class QuotaService: ObservableObject {
             DispatchQueue.main.async {
                 self.isGeminiConnected = false
                 self.discoveredServer = nil
-                self.geminiErrorMessage = "Antigravity is not installed."
+                if !geminiInst {
+                    self.geminiErrorMessage = "Antigravity is not installed."
+                }
             }
         }
         
-        // 2. Refresh ChatGPT (Codex) if installed
-        if codexInst {
+        // 2. Refresh ChatGPT (Codex) if installed and selected
+        if codexInst && selectedProviders.contains(.chatgpt) {
             dispatchGroup.enter()
             refreshCodex {
                 dispatchGroup.leave()
@@ -368,20 +385,24 @@ public class QuotaService: ObservableObject {
         } else {
             DispatchQueue.main.async {
                 self.isCodexConnected = false
-                self.codexErrorMessage = "ChatGPT / Codex is not installed."
+                if !codexInst {
+                    self.codexErrorMessage = "ChatGPT / Codex is not installed."
+                }
             }
         }
         
-        // 3. Refresh Claude (Anthropic) if installed
-        if claudeInst {
+        // 3. Refresh Claude (Anthropic) if installed and selected
+        if claudeInst && selectedProviders.contains(.claude) {
             dispatchGroup.enter()
-            refreshClaude {
+            refreshClaude(forceRefresh: forceDiscovery) {
                 dispatchGroup.leave()
             }
         } else {
             DispatchQueue.main.async {
                 self.isClaudeConnected = false
-                self.claudeErrorMessage = "Claude is not installed."
+                if !claudeInst {
+                    self.claudeErrorMessage = "Claude is not installed."
+                }
             }
         }
         
@@ -398,42 +419,108 @@ public class QuotaService: ObservableObject {
     
     private func checkLowQuotaNotifications() {
         // 1. ChatGPT (OpenAI)
-        if isCodexConnected {
-            if let remaining = codex5hPercentage ?? (codexActiveWindow != nil ? codexRemainingPercentage : nil) {
-                evaluateQuotaAlert(provider: "ChatGPT", remainingPercent: remaining)
+        if isCodexConnected && selectedProviders.contains(.chatgpt) {
+            if let short = codex5hWindow {
+                evaluateQuotaAlert(provider: "ChatGPT", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: short.remainingPercent)
+            } else if let active = codexActiveWindow {
+                evaluateQuotaAlert(provider: "ChatGPT", windowName: active.windowDisplayName.lowercased(), keySuffix: "active", remainingPercent: active.remainingPercent)
             }
         }
         
-        // 2. Antigravity (Google)
-        if isGeminiConnected {
-            let remaining = primary5hBucket?.percentage ?? primaryWeeklyBucket?.percentage ?? geminiPercentage
-            evaluateQuotaAlert(provider: "Antigravity", remainingPercent: remaining)
+        // 2. Antigravity (Google) — inspect all groups including Gemini Models and Claude/GPT models
+        if isGeminiConnected && selectedProviders.contains(.gemini) {
+            if let groups = quotaSummary?.groups, !groups.isEmpty {
+                for group in groups {
+                    let groupName = group.displayName
+                    for bucket in group.buckets {
+                        if let fraction = bucket.remainingFraction {
+                            let pct = Int((fraction * 100.0).rounded())
+                            let windowDesc = bucket.window ?? (bucket.bucketId.contains("5h") ? "5-hour limit" : "weekly limit")
+                            let key = "\(groupName)-\(bucket.bucketId)"
+                            evaluateQuotaAlert(
+                                provider: "Antigravity",
+                                windowName: "\(groupName) \(windowDesc)",
+                                keySuffix: key,
+                                remainingPercent: pct
+                            )
+                        }
+                    }
+                }
+            } else {
+                if let bucket5h = primary5hBucket {
+                    evaluateQuotaAlert(provider: "Antigravity", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: bucket5h.percentage)
+                }
+                if let bucketWeekly = primaryWeeklyBucket {
+                    evaluateQuotaAlert(provider: "Antigravity", windowName: "weekly limit", keySuffix: "weekly", remainingPercent: bucketWeekly.percentage)
+                }
+            }
         }
         
         // 3. Claude (Anthropic)
-        if isClaudeConnected {
-            // Only alert when numerical quota limits are available (Pro / Team tiers)
-            if let remaining = claude5hPercentage ?? claudeWeeklyPercentage {
-                evaluateQuotaAlert(provider: "Claude", remainingPercent: remaining)
+        if isClaudeConnected && selectedProviders.contains(.claude) {
+            if let fiveHour = claude5hPercentage {
+                evaluateQuotaAlert(provider: "Claude", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: fiveHour)
+            }
+            if let weekly = claudeWeeklyPercentage {
+                evaluateQuotaAlert(provider: "Claude", windowName: "weekly limit", keySuffix: "weekly", remainingPercent: weekly)
             }
         }
+        
+        // Mark baselines as initialized so subsequent refreshes only alert upon active quota drop
+        hasInitializedQuotaBaselines = true
     }
     
-    private func evaluateQuotaAlert(provider: String, remainingPercent: Int) {
+    private func evaluateQuotaAlert(provider: String, windowName: String? = nil, keySuffix: String = "", remainingPercent: Int) {
         guard remainingPercent >= 0 else { return }
         
-        var fired = alertedThresholds[provider] ?? []
+        let alertKey = keySuffix.isEmpty ? provider : "\(provider)-\(keySuffix)"
+        let previousPercent = lastKnownQuotaPercentages[alertKey]
+        
+        // 1. Initial baseline establishment on startup:
+        // Record current levels silently. If a tool already has low quota on launch, mark it as acknowledged
+        // so an idle tool with stale low quota NEVER fires a notification out of the blue.
+        if !hasInitializedQuotaBaselines {
+            lastKnownQuotaPercentages[alertKey] = remainingPercent
+            var initialFired: Set<Int> = []
+            if remainingPercent <= 10 {
+                initialFired.insert(10)
+                initialFired.insert(30)
+            } else if remainingPercent <= 30 {
+                initialFired.insert(30)
+            }
+            if !initialFired.isEmpty {
+                alertedThresholds[alertKey] = initialFired
+            }
+            return
+        }
+        
+        // 2. Always record current percentage
+        lastKnownQuotaPercentages[alertKey] = remainingPercent
+        
+        // 3. REQUIRE ACTIVE DROP:
+        // A low quota alert MUST only trigger when quota ACTUALLY DECREASES (active usage occurred)!
+        // If remainingPercent >= prev, the tool is idle (no usage occurred) or has reset/recovered.
+        guard let prev = previousPercent, remainingPercent < prev else {
+            // Quota has recovered or reset (> 30%)
+            if remainingPercent > 30 {
+                alertedThresholds[alertKey] = []
+            }
+            return
+        }
+        
+        var fired = alertedThresholds[alertKey] ?? []
         
         // Threshold 1: <= 10% (Critical warning)
         if remainingPercent <= 10 {
             if !fired.contains(10) {
                 NotificationManager.shared.sendLowQuotaNotification(
                     provider: provider,
-                    remainingQuota: "\(remainingPercent)%"
+                    remainingQuota: "\(remainingPercent)%",
+                    window: windowName
                 )
                 fired.insert(10)
                 fired.insert(30) // Mark 30% as also triggered if it dropped rapidly
-                alertedThresholds[provider] = fired
+                alertedThresholds[alertKey] = fired
             }
         }
         // Threshold 2: <= 30% (Early warning)
@@ -441,22 +528,16 @@ public class QuotaService: ObservableObject {
             if !fired.contains(30) {
                 NotificationManager.shared.sendLowQuotaNotification(
                     provider: provider,
-                    remainingQuota: "\(remainingPercent)%"
+                    remainingQuota: "\(remainingPercent)%",
+                    window: windowName
                 )
                 fired.insert(30)
-                alertedThresholds[provider] = fired
+                alertedThresholds[alertKey] = fired
             }
             // If quota is between 11% and 30%, rearm 10% in case it drops further
             if fired.contains(10) {
                 fired.remove(10)
-                alertedThresholds[provider] = fired
-            }
-        }
-        // Quota has recovered or reset (> 30%)
-        else {
-            // Rearm both 30% and 10% alerts for next cycle
-            if !fired.isEmpty {
-                alertedThresholds[provider] = []
+                alertedThresholds[alertKey] = fired
             }
         }
     }
@@ -550,9 +631,9 @@ public class QuotaService: ObservableObject {
     
     // MARK: - Claude / Anthropic Refresh Pipeline
     
-    private func refreshClaude(completion: @escaping () -> Void) {
+    private func refreshClaude(forceRefresh: Bool = false, completion: @escaping () -> Void) {
         ClaudeService.shared.usagePollInterval = TimeInterval(refreshInterval.rawValue)
-        ClaudeService.shared.fetch { [weak self] result in
+        ClaudeService.shared.fetch(forceRefresh: forceRefresh) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else {
                     completion()

@@ -1,6 +1,8 @@
 import Foundation
 import CommonCrypto
 import SQLite3
+import Security
+import LocalAuthentication
 
 public final class ClaudeService {
     public static let shared = ClaudeService()
@@ -26,7 +28,10 @@ public final class ClaudeService {
         }
     }
     
-    public func fetch(completion: @escaping (Result<ClaudeState, Error>) -> Void) {
+    public func fetch(forceRefresh: Bool = false, completion: @escaping (Result<ClaudeState, Error>) -> Void) {
+        if forceRefresh {
+            ClaudeKeyChainHelper.resetKeyCache()
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
@@ -279,65 +284,84 @@ public final class ClaudeService {
 // MARK: - Keychain and Chromium Cookies Extractor
 
 private struct ClaudeKeyChainHelper {
+    private static var cachedSafeStorageKey: [UInt8]?
+    private static var hasAttemptedSafeStorageKey = false
+
     static func getSafeStorageKey() -> [UInt8]? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", "Claude Safe Storage", "-w"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let pass = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !pass.isEmpty else { return nil }
-            
-            var derivedKey = [UInt8](repeating: 0, count: 16)
-            let salt = "saltysalt"
-            let status = CCKeyDerivationPBKDF(
-                CCPBKDFAlgorithm(kCCPBKDF2),
-                pass, pass.utf8.count,
-                salt, salt.utf8.count,
-                CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1),
-                1003,
-                &derivedKey, 16
-            )
-            return status == kCCSuccess ? derivedKey : nil
-        } catch {
+        if hasAttemptedSafeStorageKey {
+            return cachedSafeStorageKey
+        }
+        
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Safe Storage",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context
+        ]
+        
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let pass = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !pass.isEmpty else {
+            hasAttemptedSafeStorageKey = true
             return nil
         }
+        
+        var derivedKey = [UInt8](repeating: 0, count: 16)
+        let salt = "saltysalt"
+        let cryptStatus = CCKeyDerivationPBKDF(
+            CCPBKDFAlgorithm(kCCPBKDF2),
+            pass, pass.utf8.count,
+            salt, salt.utf8.count,
+            CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1),
+            1003,
+            &derivedKey, 16
+        )
+        if cryptStatus == kCCSuccess {
+            cachedSafeStorageKey = derivedKey
+            hasAttemptedSafeStorageKey = true
+            return derivedKey
+        }
+        hasAttemptedSafeStorageKey = true
+        return nil
     }
     
     /// Reads the Claude Code OAuth access token from the macOS Keychain (local only).
     static func getClaudeCodeOAuthToken() -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let oauth = json["claudeAiOauth"] as? [String: Any],
-                  let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
-            if let expiresAt = oauth["expiresAt"] as? Double, Date(timeIntervalSince1970: expiresAt / 1000) < Date() {
-                return nil
-            }
-            return token
-        } catch {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context
+        ]
+        
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
+        if let expiresAt = oauth["expiresAt"] as? Double, Date(timeIntervalSince1970: expiresAt / 1000) < Date() {
             return nil
         }
+        return token
     }
     
     static func getCookie(name: String, key: [UInt8]) -> String? {
         let cookiePath = NSHomeDirectory() + "/Library/Application Support/Claude/Cookies"
         var db: OpaquePointer?
-        guard sqlite3_open(cookiePath, &db) == SQLITE_OK else { return nil }
+        guard sqlite3_open_v2(cookiePath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_close(db) }
         var stmt: OpaquePointer?
         let query = "SELECT encrypted_value FROM cookies WHERE name = \"" + name + "\""
@@ -368,5 +392,10 @@ private struct ClaudeKeyChainHelper {
             }
         }
         return nil
+    }
+    
+    static func resetKeyCache() {
+        cachedSafeStorageKey = nil
+        hasAttemptedSafeStorageKey = false
     }
 }

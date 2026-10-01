@@ -29,6 +29,11 @@ public class StatusBarController {
         
         // Initial refresh
         service.refresh()
+        
+        // Background check for updates (silent)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            UpdateService.shared.checkForUpdates(isUserInitiated: false)
+        }
     }
     
     private func setupPopover() {
@@ -380,41 +385,63 @@ public class StatusBarController {
             intervalMenu.addItem(item)
         }
         let intervalSubItem = NSMenuItem(title: "Refresh Interval", action: nil, keyEquivalent: "")
+        intervalSubItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Refresh Interval")
         intervalSubItem.submenu = intervalMenu
         menu.addItem(intervalSubItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // Actions
+        // Actions: Refresh All
         let refreshItem = NSMenuItem(title: "Refresh All Now", action: #selector(refreshAction), keyEquivalent: "r")
+        refreshItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh All Now")
         refreshItem.target = self
         menu.addItem(refreshItem)
         
-        // App Launch Actions
+        // Actions: Launch App Submenu (bundled together)
         if service.isGeminiInstalled || service.isCodexInstalled || service.isClaudeInstalled {
-            menu.addItem(NSMenuItem.separator())
+            let launchMenu = NSMenu()
             if service.isGeminiInstalled {
-                let launchAGItem = NSMenuItem(title: "Launch Antigravity", action: #selector(launchAntigravityAction), keyEquivalent: "")
-                launchAGItem.image = AppIconHelper.antigravityTemplate
-                launchAGItem.target = self
-                menu.addItem(launchAGItem)
+                let item = NSMenuItem(title: "Antigravity", action: #selector(launchAntigravityAction), keyEquivalent: "")
+                item.image = AppIconHelper.antigravityTemplate
+                item.target = self
+                launchMenu.addItem(item)
             }
             if service.isCodexInstalled {
-                let launchCGItem = NSMenuItem(title: "Launch ChatGPT", action: #selector(launchChatGPTAction), keyEquivalent: "")
-                launchCGItem.image = AppIconHelper.chatgptTemplate
-                launchCGItem.target = self
-                menu.addItem(launchCGItem)
+                let item = NSMenuItem(title: "ChatGPT", action: #selector(launchChatGPTAction), keyEquivalent: "")
+                item.image = AppIconHelper.chatgptTemplate
+                item.target = self
+                launchMenu.addItem(item)
             }
             if service.isClaudeInstalled {
-                let launchClaudeItem = NSMenuItem(title: "Launch Claude", action: #selector(launchClaudeAction), keyEquivalent: "")
-                launchClaudeItem.image = AppIconHelper.claudeTemplate
-                launchClaudeItem.target = self
-                menu.addItem(launchClaudeItem)
+                let item = NSMenuItem(title: "Claude", action: #selector(launchClaudeAction), keyEquivalent: "")
+                item.image = AppIconHelper.claudeTemplate
+                item.target = self
+                launchMenu.addItem(item)
             }
+            
+            let launchSubItem = NSMenuItem(title: "Launch App", action: nil, keyEquivalent: "")
+            launchSubItem.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: "Launch App")
+            launchSubItem.submenu = launchMenu
+            menu.addItem(launchSubItem)
         }
         
         menu.addItem(NSMenuItem.separator())
         
+        // Maintenance: Check for Updates
+        let updateTitle: String = {
+            if let update = UpdateService.shared.availableUpdate {
+                return "Update to \(update.tagName)..."
+            }
+            return "Check for Updates..."
+        }()
+        let updateItem = NSMenuItem(title: updateTitle, action: #selector(checkForUpdatesAction), keyEquivalent: "u")
+        updateItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: "Check for Updates")
+        updateItem.target = self
+        menu.addItem(updateItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Quit
         let quitItem = NSMenuItem(title: "Quit AIUsage", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -422,6 +449,10 @@ public class StatusBarController {
         statusItem.menu = menu
         button.performClick(nil)
         statusItem.menu = nil // Restore normal click behavior
+    }
+    
+    @objc private func checkForUpdatesAction() {
+        UpdateService.shared.checkForUpdates(isUserInitiated: true)
     }
     
     @objc private func launchAntigravityAction() {
