@@ -1,8 +1,22 @@
-# AIUsage ✦
+<p align="center">
+  <img src="Assets/AppIcon.png" alt="AIUsage Logo" width="128" height="128" />
+</p>
 
-A sleek, native macOS menu bar app for instant, real-time access to your **AI Model Quotas** and account usage.
+<h1 align="center">AIUsage</h1>
 
-Built entirely in Swift and SwiftUI, styled with the next-generation **macOS 27 Liquid Glass UI** design system, and engineered for zero LLM prompt token consumption.
+<p align="center">
+  <b>A sleek, native macOS menu bar app for instant, real-time access to your AI Model Quotas and account usage.</b>
+  <br />
+  Built in Swift &amp; SwiftUI &bull; macOS 27 Liquid Glass UI &bull; Zero Prompt Token Overhead
+</p>
+
+<p align="center">
+  <a href="https://github.com/desmondlee95700/AIUsage/releases/latest"><img src="https://img.shields.io/github/v/release/desmondlee95700/AIUsage?label=Download%20DMG&logo=apple&color=007AFF" alt="Download DMG"></a>
+  <img src="https://img.shields.io/badge/Platform-macOS%2014%2B-000000?logo=apple" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white" alt="Swift 5.9+">
+  <img src="https://img.shields.io/badge/Design-macOS%2027%20Liquid%20Glass-8A2BE2" alt="Liquid Glass UI">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+</p>
 
 ---
 
@@ -32,9 +46,9 @@ Download the latest pre-compiled macOS disk image:
 ## ✨ Features
 
 - **Tri-Provider AI Support (Antigravity, ChatGPT, Claude)**:
-  - **Antigravity (Google)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
-  - **ChatGPT (OpenAI)**: Live quota tracking, 5-hour burst and weekly limits, reset credit redemption, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
-  - **Claude (Anthropic)**: Native desktop session quota tracking, 5-hour rolling burst and weekly limits, Claude 3.7 Sonnet allocation, and dynamic free tier capacity indicators.
+  - <img src="Assets/AntigravityIcon.png" width="16" height="16" valign="middle" /> **Antigravity (Google)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
+  - <img src="Assets/ChatGPTIcon.png" width="16" height="16" valign="middle" /> **ChatGPT (OpenAI)**: Live quota tracking, 5-hour burst and weekly limits, reset credit redemption, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
+  - <img src="Assets/ClaudeIcon.png" width="16" height="16" valign="middle" /> **Claude (Anthropic)**: Native desktop session quota tracking, 5-hour rolling burst and weekly limits, Claude 3.7 Sonnet allocation, and dynamic free tier capacity indicators.
 - **Flexible Multi-Choice Provider Focus**:
   - Customize your active providers with complete flexibility (Antigravity only, ChatGPT only, Claude only, Antigravity & Claude, ChatGPT & Claude, or All Providers).
   - **Persistent In-Menu Multi-Select**: Context submenu stays open while toggling multiple checkboxes without premature dismissal.
