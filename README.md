@@ -45,35 +45,25 @@ Download the latest pre-compiled macOS disk image:
 
 ## ✨ Features
 
-- **Tri-Provider AI Support (Antigravity, ChatGPT, Claude)**:
-  - <img src="Assets/AntigravityIcon.png" width="16" height="16" valign="middle" /> **Antigravity (Google)**: Weekly & 5-hour quota tracking, prompt & flow credits, and plan status via local Connect-RPC.
-  - <img src="Assets/ChatGPTIcon.png" width="16" height="16" valign="middle" /> **ChatGPT (OpenAI)**: Live quota tracking, 5-hour burst and weekly limits, reset credit redemption, and token usage via the bundled Codex runtime inside `ChatGPT.app`.
-  - <img src="Assets/ClaudeIcon.png" width="16" height="16" valign="middle" /> **Claude (Anthropic)**: Native desktop session quota tracking, 5-hour rolling burst and weekly limits, Claude 3.7 Sonnet allocation, and dynamic free tier capacity indicators.
-- **Flexible Multi-Choice Provider Focus**:
-  - Customize your active providers with complete flexibility (Antigravity only, ChatGPT only, Claude only, Antigravity & Claude, ChatGPT & Claude, or All Providers).
-  - **Persistent In-Menu Multi-Select**: Context submenu stays open while toggling multiple checkboxes without premature dismissal.
-  - **In-Popover Provider Filter**: Dedicated `slider.horizontal.3` button in the header bar for instant configuration.
-- **At-A-Glance Status & Awareness**:
-  - **Multi-Provider Menu Bar Display**: Displays metrics for your selected models side-by-side (e.g. `78% · 90% · Free`) with template glyphs.
-  - **Liquid Glass Provider Switcher**: Segmented tab bar dynamically displays only your selected active providers with zero height shift.
-  - **Multi-Model Tooltip**: Hovering over the menu bar item shows a detailed breakdown for all selected providers.
-- **Detailed Quota Breakdown**:
-  - **Antigravity Models**: Weekly Limit Remaining & Rolling 5-Hour Limit Remaining with live circular progress rings.
-  - **ChatGPT Models**: 5-hour burst window, weekly window, exact reset countdowns, and reset credit allowances.
-  - **Claude Models**: 5-hour rolling session, weekly quota, dedicated Sonnet quota, and dynamic server capacity limits.
-- **Plan & Account Identity**:
-  - Displays your active logged-in Google, OpenAI, and Anthropic account emails and subscription badges.
-- **macOS 27 Liquid Glass Design**:
-  - Translucent refractive substrate (`.ultraThinMaterial` / `.thinMaterial`).
-  - Specular rim refraction highlight with continuous bevelled corners.
-  - Viscous fluid spring mechanics and auto-expanding popover (no scrollbars).
-- **Zero Token Overhead & Complete Privacy**:
-  - Local loopback Connect-RPC for Antigravity; local JSON-RPC stdio for ChatGPT; local desktop session cookies for Claude.
-  - Consumes **0 prompt tokens**.
-  - No external servers, no third-party telemetry, no credentials stored.
-- **Auto-Discovery & Auto-Reconnection**:
-  - Automatically discovers running instances of Antigravity, ChatGPT.app, and Claude.app.
-  - Seamlessly re-probes and reconnects whenever any application is restarted.
+### 🤖 Multi-Provider Capabilities Matrix
+
+| Provider | Tracked Metrics | Connection Protocol | Token Overhead | Auto-Discovery |
+| :--- | :--- | :--- | :---: | :---: |
+| <img src="Assets/AntigravityIcon.png" width="18" height="18" valign="middle" /> **Google Antigravity** | • Rolling 5-Hour Limit<br>• Weekly Quota Limit<br>• Prompt & Flow Credits<br>• Google Account Tier & Email | Local Connect-RPC (`127.0.0.1`) | **0 Tokens** | ✅ Instant |
+| <img src="Assets/ChatGPTIcon.png" width="18" height="18" valign="middle" /> **OpenAI ChatGPT** | • 5-Hour Burst Limit<br>• Weekly Quota Limit<br>• Reset Credit Redemption<br>• OpenAI Plan & Email | Local Codex JSON-RPC stdio | **0 Tokens** | ✅ Instant |
+| <img src="Assets/ClaudeIcon.png" width="18" height="18" valign="middle" /> **Anthropic Claude** | • 5-Hour Rolling Burst<br>• Weekly Quota Limit<br>• Claude 3.7 Sonnet Allocation<br>• Free Tier Dynamic Capacity | Local Desktop Session Cookies | **0 Tokens** | ✅ Instant |
+
+<br />
+
+### 🍎 App & macOS Experience
+
+| Feature | Description |
+| :--- | :--- |
+| 🎛️ **Flexible Provider Focus** | Toggle any combination of active models (Antigravity, ChatGPT, Claude) with persistent in-menu checkboxes and an in-popover filter slider. |
+| 📊 **Menu Bar Telemetry** | Displays side-by-side metrics (e.g. `78% · 90% · Free`) with native template glyphs and detailed multi-model hover tooltips. |
+| 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients, viscous spring mechanics, and auto-expanding popover without scrollbars. |
+| 🔒 **100% Private & Local** | Zero external telemetry, zero LLM prompts consumed, and no credentials saved. Communicates strictly over local IPC. |
+| 🔄 **Auto-Discovery & Recovery** | Automatically detects running desktop instances and seamlessly reconnects whenever any AI application is launched or restarted. |
 
 ---
 
