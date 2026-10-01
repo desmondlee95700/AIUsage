@@ -88,11 +88,39 @@ open AIUsage.app
 
 ## ⚙️ Controls & Shortcuts
 
-- **Left-Click Menu Bar Item**: Toggles the interactive quota breakdown popover.
-- **Right-Click Menu Bar Item**: Opens quick context menu (Refresh Now, Quit AIUsage).
-- **Header Action Buttons**:
-  - **Refresh (🔄)**: Forces an immediate re-probe and quota fetch.
-  - **Quit (⏻)**: Terminates the menu bar application.
+### 🖱️ Mouse & Menu Bar Gestures
+
+| Gesture | Target | Action |
+| :--- | :--- | :--- |
+| **Left-Click** | Menu Bar Item | Opens or dismisses the Liquid Glass quota inspector popover. |
+| **Right-Click** / **Control-Click** | Menu Bar Item | Opens the full macOS context menu with quick settings and actions. |
+| **Hover** | Menu Bar Item | Displays a multi-model tool tip with real-time percentage and credit summaries. |
+| **Option (⌥) + Click** | Provider Item | Solo Mode: Instantly selects only that provider in the focus menu. |
+
+<br />
+
+### 🎛️ Popover Header Controls
+
+| Control | Icon | Action |
+| :--- | :---: | :--- |
+| **Provider Filter** | `slider.horizontal.3` | Opens multi-select popover to toggle active providers without closing the menu. |
+| **Provider Switcher** | Segment Tabs | Smoothly toggles active provider dashboards (Antigravity, ChatGPT, Claude) with zero height shift. |
+| **Refresh Quotas** | `arrow.clockwise` (🔄) | Runs spring-animated icon spin and forces local service re-discovery and quota poll. |
+| **Update Available** | `arrow.down.circle` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
+| **Quit AIUsage** | `power` (⏻) | Immediately and cleanly terminates the background menu bar application. |
+
+<br />
+
+### ⌨️ Context Menu & Keyboard Shortcuts
+
+| Shortcut | Command | Action |
+| :---: | :--- | :--- |
+| <kbd>⌘</kbd> <kbd>R</kbd> | **Refresh All Now** | Forces immediate re-probe and quota fetch across all active providers. |
+| <kbd>⌘</kbd> <kbd>U</kbd> | **Check for Updates...** | Checks GitHub Releases for new DMG builds and prompts direct download. |
+| <kbd>⌘</kbd> <kbd>Q</kbd> | **Quit AIUsage** | Terminates the application. |
+| — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
+| — | **Refresh Interval** | Configure automatic polling cadence (1m, 5m, 15m, 30m, 1h, or Manual). |
+| — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |
 
 ---
 
