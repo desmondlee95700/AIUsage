@@ -297,7 +297,7 @@ public struct MainUsageView: View {
                     if let pct = service.claudePercentage {
                         return "\(pct)%"
                     } else {
-                        return "Free"
+                        return service.claudeAccount?.tierBadge ?? "Free"
                     }
                 }()
                 dualProviderTabButton(

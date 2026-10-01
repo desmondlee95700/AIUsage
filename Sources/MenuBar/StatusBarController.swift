@@ -192,7 +192,7 @@ public class StatusBarController {
                     if let pct = service.claudePercentage {
                         return " \(pct)%"
                     } else {
-                        return " Free"
+                        return " \(service.claudeAccount?.tierBadge ?? "Free")"
                     }
                 }()
                 items.append(ProviderRenderItem(
@@ -268,7 +268,7 @@ public class StatusBarController {
         case .claude:
             icon = AppIconHelper.claudeTemplate
             if service.isClaudeConnected {
-                textStr = service.claudePercentage != nil ? " \(service.claudePercentage!)%" : " Free"
+                textStr = service.claudePercentage != nil ? " \(service.claudePercentage!)%" : " \(service.claudeAccount?.tierBadge ?? "Free")"
             } else {
                 textStr = " Off"
             }

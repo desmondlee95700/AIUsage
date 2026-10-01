@@ -135,48 +135,7 @@ public final class ClaudeService {
         
         session.dataTask(with: usageReq) { data, _, _ in
             defer { semUsage.signal() }
-            guard let data = data,
-                  let usage = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            
-            let fhObj = usage["five_hour"] as? [String: Any]
-            let sdObj = usage["seven_day"] as? [String: Any]
-            let snObj = usage["seven_day_sonnet"] as? [String: Any]
-            let soObj = usage["seven_day_opus"] as? [String: Any]
-            let extraObj = usage["extra_usage"] as? [String: Any]
-            
-            let hasAnyLimits = fhObj != nil || sdObj != nil || snObj != nil
-            guard hasAnyLimits else {
-                // Free tier returns null limits
-                return
-            }
-            
-            let fhUtil = fhObj?["utilization"] as? Double ?? 0.0
-            let sdUtil = sdObj?["utilization"] as? Double ?? 0.0
-            let snUtil = snObj?["utilization"] as? Double
-            let soUtil = soObj?["utilization"] as? Double
-            let extraUtil = extraObj?["utilization"] as? Double
-            
-            let fhRemaining = max(0, min(100, 100 - Int(round(fhUtil))))
-            let sdRemaining = max(0, min(100, 100 - Int(round(sdUtil))))
-            let snRemaining = snUtil.map { max(0, min(100, 100 - Int(round($0)))) }
-            let soRemaining = soUtil.map { max(0, min(100, 100 - Int(round($0)))) }
-            let extraRemaining = extraUtil.map { max(0, min(100, 100 - Int(round($0)))) }
-            
-            let fhReset = Self.parseDate(fhObj?["resets_at"])
-            let sdReset = Self.parseDate(sdObj?["resets_at"])
-            
-            fetchedLimits = ClaudeUsageLimits(
-                fiveHourRemainingPercent: fhRemaining,
-                fiveHourUsedPercent: 100 - fhRemaining,
-                fiveHourResetTime: fhReset,
-                weeklyRemainingPercent: sdRemaining,
-                weeklyUsedPercent: 100 - sdRemaining,
-                weeklyResetTime: sdReset,
-                sonnetRemainingPercent: snRemaining,
-                opusRemainingPercent: soRemaining,
-                extraUsagePercent: extraRemaining,
-                lastUpdated: Date()
-            )
+            fetchedLimits = Self.parseUsageLimits(data)
         }.resume()
         semUsage.wait()
         
@@ -219,7 +178,86 @@ public final class ClaudeService {
             subscriptionCreatedAt: createdAt
         )
         
-        return ClaudeState(account: account, limits: nil, isConnected: true)
+        return ClaudeState(account: account, limits: fetchUsageWithOAuth(), isConnected: true)
+    }
+    
+    /// Parses a usage payload (`five_hour`, `seven_day`, ...) shared by the claude.ai and OAuth endpoints.
+    static func parseUsageLimits(_ data: Data?) -> ClaudeUsageLimits? {
+        guard let data = data,
+              let usage = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        
+        let fhObj = usage["five_hour"] as? [String: Any]
+        let sdObj = usage["seven_day"] as? [String: Any]
+        let snObj = usage["seven_day_sonnet"] as? [String: Any]
+        let soObj = usage["seven_day_opus"] as? [String: Any]
+        let extraObj = usage["extra_usage"] as? [String: Any]
+        
+        guard fhObj != nil || sdObj != nil || snObj != nil else { return nil } // Free tier returns null limits
+        
+        func remaining(_ util: Double?) -> Int? {
+            util.map { max(0, min(100, 100 - Int(round($0)))) }
+        }
+        let fhRemaining = remaining(fhObj?["utilization"] as? Double ?? 0.0) ?? 100
+        let sdRemaining = remaining(sdObj?["utilization"] as? Double ?? 0.0) ?? 100
+        
+        return ClaudeUsageLimits(
+            fiveHourRemainingPercent: fhRemaining,
+            fiveHourUsedPercent: 100 - fhRemaining,
+            fiveHourResetTime: parseDate(fhObj?["resets_at"]),
+            weeklyRemainingPercent: sdRemaining,
+            weeklyUsedPercent: 100 - sdRemaining,
+            weeklyResetTime: parseDate(sdObj?["resets_at"]),
+            sonnetRemainingPercent: remaining(snObj?["utilization"] as? Double),
+            opusRemainingPercent: remaining(soObj?["utilization"] as? Double),
+            extraUsagePercent: remaining(extraObj?["utilization"] as? Double),
+            lastUpdated: Date()
+        )
+    }
+    
+    private var oauthRetryAfter = Date.distantPast
+    private var lastGoodLimits: ClaudeUsageLimits?
+    private var lastGoodAt = Date.distantPast
+    /// Mirrors the user's refresh interval (seconds; 0 = manual, every fetch goes through).
+    public var usagePollInterval: TimeInterval = 60
+    private let rateLimitBackoff: TimeInterval = 60     // floor after a 429 (the endpoint sends Retry-After: 0)
+    private var staleGrace: TimeInterval { max(900, usagePollInterval * 3) }  // keep last good numbers through brief failures
+    
+    /// Fetches usage with the Claude Code OAuth token. The token is only ever sent as a Bearer
+    /// header to https://api.anthropic.com (HTTPS); it is never logged, stored, or sent elsewhere.
+    /// The refresh token is never read or used: when the access token expires we simply fail
+    /// and pick up the new token once Claude Code refreshes it in the Keychain.
+    /// Requests follow the user's refresh interval; the last good result is reused for up to `staleGrace`, after which nil
+    /// (the "Connection Lost" state) is returned.
+    private func fetchUsageWithOAuth() -> ClaudeUsageLimits? {
+        if Date() >= oauthRetryAfter {
+            if let limits = requestUsage() {
+                lastGoodLimits = limits
+                lastGoodAt = Date()
+                oauthRetryAfter = Date().addingTimeInterval(usagePollInterval)
+            }
+        }
+        return Date().timeIntervalSince(lastGoodAt) <= staleGrace ? lastGoodLimits : nil
+    }
+    
+    private func requestUsage() -> ClaudeUsageLimits? {
+        guard let token = ClaudeKeyChainHelper.getClaudeCodeOAuthToken() else { return nil }
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        
+        let sem = DispatchSemaphore(value: 0)
+        var limits: ClaudeUsageLimits? = nil
+        session.dataTask(with: req) { [weak self] data, resp, _ in
+            defer { sem.signal() }
+            guard let http = resp as? HTTPURLResponse else { return }
+            if http.statusCode == 429, let ra = http.value(forHTTPHeaderField: "Retry-After"), let secs = Double(ra) {
+                self?.oauthRetryAfter = Date().addingTimeInterval(max(secs, self?.rateLimitBackoff ?? 60))
+            }
+            guard http.statusCode == 200 else { return }
+            limits = Self.parseUsageLimits(data)
+        }.resume()
+        sem.wait()
+        return limits
     }
     
     public static func parseDate(_ val: Any?) -> Date? {
@@ -266,6 +304,31 @@ private struct ClaudeKeyChainHelper {
                 &derivedKey, 16
             )
             return status == kCCSuccess ? derivedKey : nil
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Reads the Claude Code OAuth access token from the macOS Keychain (local only).
+    static func getClaudeCodeOAuthToken() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let oauth = json["claudeAiOauth"] as? [String: Any],
+                  let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
+            if let expiresAt = oauth["expiresAt"] as? Double, Date(timeIntervalSince1970: expiresAt / 1000) < Date() {
+                return nil
+            }
+            return token
         } catch {
             return nil
         }

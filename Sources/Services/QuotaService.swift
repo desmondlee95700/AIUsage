@@ -480,6 +480,7 @@ public class QuotaService: ObservableObject {
     // MARK: - Claude / Anthropic Refresh Pipeline
     
     private func refreshClaude(completion: @escaping () -> Void) {
+        ClaudeService.shared.usagePollInterval = TimeInterval(refreshInterval.rawValue)
         ClaudeService.shared.fetch { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else {
@@ -725,7 +726,7 @@ public class QuotaService: ObservableObject {
                 parts.append(isCodexConnected ? "\(codexRemainingPercentage)%" : "Off")
             case .claude:
                 if isClaudeConnected {
-                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : "Free")
+                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : (claudeAccount?.tierBadge ?? "Free"))
                 } else {
                     parts.append("Off")
                 }

@@ -249,6 +249,23 @@ public struct ClaudeQuotaCardView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                     }
+                } else if account?.canSeeUsageLimits ?? true {
+                    // Paid plan, usage not available: Claude Code's login has lapsed. Retries automatically.
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wifi.slash")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color.orange)
+                            Text("Connection Lost")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        Text("5-hour and weekly limits are unavailable because Claude Code hasn't been active recently. They'll return automatically once you use Claude Code again.")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(.white.opacity(0.65))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
                 } else {
                     // Free Tier Informational State
                     VStack(alignment: .leading, spacing: 8) {
