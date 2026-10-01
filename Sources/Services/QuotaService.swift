@@ -725,7 +725,7 @@ public class QuotaService: ObservableObject {
                 parts.append(isCodexConnected ? "\(codexRemainingPercentage)%" : "Off")
             case .claude:
                 if isClaudeConnected {
-                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : "Free")
+                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : (claudeAccount?.tierBadge ?? "Free"))
                 } else {
                     parts.append("Off")
                 }
