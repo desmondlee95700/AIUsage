@@ -214,25 +214,29 @@ public final class ClaudeService {
         )
     }
     
-    private var oauthFailures = 0
     private var oauthRetryAfter = Date.distantPast
+    private var lastGoodLimits: ClaudeUsageLimits?
+    private var lastGoodAt = Date.distantPast
+    /// Mirrors the user's refresh interval (seconds; 0 = manual, every fetch goes through).
+    public var usagePollInterval: TimeInterval = 60
+    private let rateLimitBackoff: TimeInterval = 60     // floor after a 429 (the endpoint sends Retry-After: 0)
+    private var staleGrace: TimeInterval { max(900, usagePollInterval * 3) }  // keep last good numbers through brief failures
     
     /// Fetches usage with the Claude Code OAuth token. The token is only ever sent as a Bearer
     /// header to https://api.anthropic.com (HTTPS); it is never logged, stored, or sent elsewhere.
-    /// The refresh token is never read or used: when the access token expires we simply return nil
-    /// (stats hidden) and pick up the new token once Claude Code refreshes it in the Keychain.
+    /// The refresh token is never read or used: when the access token expires we simply fail
+    /// and pick up the new token once Claude Code refreshes it in the Keychain.
+    /// Requests follow the user's refresh interval; the last good result is reused for up to `staleGrace`, after which nil
+    /// (the "Connection Lost" state) is returned.
     private func fetchUsageWithOAuth() -> ClaudeUsageLimits? {
-        guard Date() >= oauthRetryAfter else { return nil }
-        let limits = requestUsage()
-        if limits != nil {
-            oauthFailures = 0
-            oauthRetryAfter = .distantPast
-        } else {
-            oauthFailures += 1
-            // Retry every poll at first, then back off to 5 minutes to avoid hammering Keychain/API.
-            if oauthFailures >= 3 { oauthRetryAfter = Date().addingTimeInterval(300) }
+        if Date() >= oauthRetryAfter {
+            if let limits = requestUsage() {
+                lastGoodLimits = limits
+                lastGoodAt = Date()
+                oauthRetryAfter = Date().addingTimeInterval(usagePollInterval)
+            }
         }
-        return limits
+        return Date().timeIntervalSince(lastGoodAt) <= staleGrace ? lastGoodLimits : nil
     }
     
     private func requestUsage() -> ClaudeUsageLimits? {
@@ -247,7 +251,7 @@ public final class ClaudeService {
             defer { sem.signal() }
             guard let http = resp as? HTTPURLResponse else { return }
             if http.statusCode == 429, let ra = http.value(forHTTPHeaderField: "Retry-After"), let secs = Double(ra) {
-                self?.oauthRetryAfter = Date().addingTimeInterval(secs)
+                self?.oauthRetryAfter = Date().addingTimeInterval(max(secs, self?.rateLimitBackoff ?? 60))
             }
             guard http.statusCode == 200 else { return }
             limits = Self.parseUsageLimits(data)

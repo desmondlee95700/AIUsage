@@ -480,6 +480,7 @@ public class QuotaService: ObservableObject {
     // MARK: - Claude / Anthropic Refresh Pipeline
     
     private func refreshClaude(completion: @escaping () -> Void) {
+        ClaudeService.shared.usagePollInterval = TimeInterval(refreshInterval.rawValue)
         ClaudeService.shared.fetch { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else {
