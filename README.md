@@ -125,4 +125,7 @@ open AIUsage.app
 ---
 
 ## 📄 License
-MIT License.
+
+This project is licensed under the **[MIT License](LICENSE)** &mdash; see the [`LICENSE`](LICENSE) file for complete details.
+
+Copyright &copy; 2026 [Desmond Lee](https://github.com/desmondlee95700). Free and open-source software for personal and commercial use.
