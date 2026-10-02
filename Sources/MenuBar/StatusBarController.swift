@@ -6,6 +6,9 @@ public class StatusBarController {
     private var popover: NSPopover
     private var service: QuotaService
     private var eventMonitor: Any?
+    /// Horizontal extent of each provider's section within the rendered menu bar image
+    /// (image coordinates), used to open the popover on the provider that was clicked.
+    private var providerSegments: [(provider: AIProvider, range: ClosedRange<CGFloat>)] = []
     
     public init(service: QuotaService = .shared) {
         self.service = service
@@ -145,6 +148,7 @@ public class StatusBarController {
         let height: CGFloat = 18.0
         
         let providers = service.selectedInstalledProviders
+        providerSegments = []
         
         if providers.isEmpty {
             let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
@@ -175,6 +179,7 @@ public class StatusBarController {
         }
         
         struct ProviderRenderItem {
+            let provider: AIProvider
             let icon: NSImage?
             let text: String
         }
@@ -183,11 +188,13 @@ public class StatusBarController {
             switch p {
             case .gemini:
                 items.append(ProviderRenderItem(
+                    provider: p,
                     icon: AppIconHelper.antigravityTemplate,
                     text: service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Off"
                 ))
             case .chatgpt:
                 items.append(ProviderRenderItem(
+                    provider: p,
                     icon: AppIconHelper.chatgptTemplate,
                     text: service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Off"
                 ))
@@ -201,6 +208,7 @@ public class StatusBarController {
                     }
                 }()
                 items.append(ProviderRenderItem(
+                    provider: p,
                     icon: AppIconHelper.claudeTemplate,
                     text: claudeText
                 ))
@@ -224,6 +232,17 @@ public class StatusBarController {
             }
         }
         totalWidth = ceil(totalWidth)
+        
+        // Record each provider's horizontal span; the separator is split evenly between neighbours.
+        var segX: CGFloat = 0
+        for (idx, item) in items.enumerated() {
+            let w = itemWidths[idx]
+            let start = idx == 0 ? 0 : segX - sepWidth / 2
+            segX += w.iconWidth + w.textWidth
+            let end = idx == items.count - 1 ? totalWidth : segX + sepWidth / 2
+            providerSegments.append((item.provider, start...end))
+            segX += sepWidth
+        }
         
         let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
             var x: CGFloat = 0
@@ -310,8 +329,21 @@ public class StatusBarController {
         if popover.isShown {
             hidePopover(sender)
         } else {
+            if let provider = providerAtClick(event, in: button) {
+                service.dualActiveProvider = provider
+            }
             showPopover(button)
         }
+    }
+    
+    /// Maps a click on the status button to the provider section under the cursor.
+    private func providerAtClick(_ event: NSEvent?, in button: NSStatusBarButton) -> AIProvider? {
+        guard providerSegments.count > 1, let event, let imageWidth = button.image?.size.width else { return nil }
+        let localX = button.convert(event.locationInWindow, from: nil).x
+        // The image is centered within the button.
+        let imageX = localX - (button.bounds.width - imageWidth) / 2
+        return providerSegments.first(where: { $0.range.contains(imageX) })?.provider
+            ?? (imageX < 0 ? providerSegments.first?.provider : providerSegments.last?.provider)
     }
     
     private func showPopover(_ button: NSStatusBarButton) {
