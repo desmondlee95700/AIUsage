@@ -43,5 +43,7 @@ if [ -n "$VERSION" ]; then
   echo "📦 Also created versioned artifact: $DIR/AIUsage-v${VERSION}.dmg"
 fi
 
-rm -rf "$STAGING_DIR"
+rm -rf "$STAGING_DIR" "$DIR/AIUsage.app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$DIR/AIUsage.app" 2>/dev/null || true
 echo "✅ DMG successfully created at: $DMG_FILE"
+

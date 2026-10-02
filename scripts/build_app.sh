@@ -77,3 +77,6 @@ echo "🔍 Verifying bundle signature..."
 codesign --verify --deep --strict "$APP_DIR"
 
 echo "✅ App bundle successfully created and signed at: $APP_DIR"
+# Unregister local development build from Launch Services to avoid duplicate Launchpad/Spotlight icons
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP_DIR" 2>/dev/null || true
+
