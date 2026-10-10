@@ -18,17 +18,9 @@ public struct ProviderFocusSubmenuView: View {
             HStack {
                 Text("Select Active Providers")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.50))
+                    .foregroundColor(LiquidGlassText.tertiary)
                 Spacer()
-                Text("Multi-Select")
-                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(red: 0.35, green: 0.65, blue: 1.0))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(
-                        Capsule()
-                            .fill(Color(red: 0.35, green: 0.65, blue: 1.0).opacity(0.18))
-                    )
+                GlassChip("Multi-Select", tint: LiquidGlassPalette.aiBlue)
             }
             .padding(.horizontal, 10)
             .padding(.top, 4)
@@ -43,6 +35,7 @@ public struct ProviderFocusSubmenuView: View {
             if service.installedProvidersCount > 1 {
                 menuRow(
                     id: "all",
+                    tint: LiquidGlassPalette.aiBlue,
                     title: "All Providers",
                     icon: AppIconHelper.combinedTemplate(for: service.installedProviders),
                     systemFallback: "sparkles",
@@ -61,6 +54,7 @@ public struct ProviderFocusSubmenuView: View {
             if service.isGeminiInstalled {
                 menuRow(
                     id: "gemini",
+                    tint: LiquidGlassPalette.antigravity,
                     title: "Antigravity (Google)",
                     icon: AppIconHelper.antigravityTemplate,
                     systemFallback: "sparkles",
@@ -78,6 +72,7 @@ public struct ProviderFocusSubmenuView: View {
             if service.isCodexInstalled {
                 menuRow(
                     id: "chatgpt",
+                    tint: LiquidGlassPalette.chatgpt,
                     title: "ChatGPT (OpenAI)",
                     icon: AppIconHelper.chatgptTemplate,
                     systemFallback: "circle.hexagongrid",
@@ -95,6 +90,7 @@ public struct ProviderFocusSubmenuView: View {
             if service.isClaudeInstalled {
                 menuRow(
                     id: "claude",
+                    tint: LiquidGlassPalette.claude,
                     title: "Claude (Anthropic)",
                     icon: AppIconHelper.claudeTemplate,
                     systemFallback: "asterisk",
@@ -118,28 +114,13 @@ public struct ProviderFocusSubmenuView: View {
             HStack {
                 Text("⌥-click to isolate single")
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.40))
+                    .foregroundColor(LiquidGlassText.tertiary)
                 
                 Spacer()
                 
-                Button(action: {
+                GlassCapsuleButton("Done", trailingSystemImage: "checkmark", style: .prominent(LiquidGlassPalette.aiBlue), size: .small) {
                     onDismiss?()
-                }) {
-                    HStack(spacing: 3) {
-                        Text("Done")
-                            .font(.system(size: 11, weight: .semibold))
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(Color(red: 0.25, green: 0.55, blue: 0.95))
-                    )
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 4)
@@ -150,6 +131,7 @@ public struct ProviderFocusSubmenuView: View {
     
     private func menuRow(
         id: String,
+        tint: Color,
         title: String,
         icon: NSImage?,
         systemFallback: String,
@@ -160,17 +142,25 @@ public struct ProviderFocusSubmenuView: View {
         
         return Button(action: action) {
             HStack(spacing: 7) {
-                // Checkmark
-                Group {
+                // Glass checkbox filled with the provider accent when selected
+                ZStack {
+                    Circle()
+                        .fill(isChecked ? tint : Color.white.opacity(0.06))
+                    Circle()
+                        .strokeBorder(
+                            isChecked
+                                ? LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.4)
+                                : LiquidGlassTokens.specularBorder(isDark: true, intensity: 0.9),
+                            lineWidth: 0.8
+                        )
                     if isChecked {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isHovered ? .white : Color(red: 0.35, green: 0.65, blue: 1.0))
-                    } else {
-                        Color.clear
+                            .font(.system(size: 7.5, weight: .heavy))
+                            .foregroundColor(.white)
                     }
                 }
                 .frame(width: 14, height: 14)
+                .shadow(color: isChecked ? tint.opacity(0.45) : .clear, radius: 3)
                 
                 // Icon
                 Group {
@@ -179,12 +169,12 @@ public struct ProviderFocusSubmenuView: View {
                             .resizable()
                             .renderingMode(.template)
                             .aspectRatio(contentMode: .fit)
-                            .foregroundColor(isHovered ? .white : .white.opacity(0.85))
+                            .foregroundColor(isHovered || isChecked ? .white : LiquidGlassText.secondary)
                             .frame(width: 14, height: 14)
                     } else {
                         Image(systemName: systemFallback)
                             .font(.system(size: 11.5, weight: .medium))
-                            .foregroundColor(isHovered ? .white : .white.opacity(0.85))
+                            .foregroundColor(isHovered || isChecked ? .white : LiquidGlassText.secondary)
                             .frame(width: 14, height: 14)
                     }
                 }
@@ -192,7 +182,7 @@ public struct ProviderFocusSubmenuView: View {
                 // Title
                 Text(title)
                     .font(.system(size: 12.5, weight: isChecked ? .semibold : .regular))
-                    .foregroundColor(isHovered ? .white : .white.opacity(isChecked ? 0.95 : 0.75))
+                    .foregroundColor(isHovered || isChecked ? LiquidGlassText.primary : LiquidGlassText.secondary)
                     .lineLimit(1)
                 
                 Spacer()
@@ -200,12 +190,17 @@ public struct ProviderFocusSubmenuView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 4.5)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(isHovered ? Color.accentColor : Color.clear)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isHovered ? Color.white.opacity(0.12) : Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: isHovered ? 0.8 : 0.0), lineWidth: 0.8)
+                    )
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(LiquidGlassTokens.hoverSpring, value: isHovered)
         .onHover { hovering in
             if hovering {
                 hoveredRow = id

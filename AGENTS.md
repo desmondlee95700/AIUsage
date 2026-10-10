@@ -40,7 +40,7 @@ AIUsage/
 │   ├── AppIcon.icns            # Multi-scale Apple ICNS icon
 │   └── AppIcon.png             # Master 1024x1024 icon
 ├── .agents/skills/             # Workspace-level skills
-│   ├── liquid-glass-macos27/   # macOS 27 Liquid Glass UI design skill
+│   ├── liquid-glass-ui/        # macOS 27 Liquid Glass UI design skill
 │   └── aiusage-release/        # Automated release & DMG publishing skill
 ├── Sources/
 │   ├── main.swift              # AppKit lifecycle entry point & NSApplicationDelegate
@@ -56,8 +56,8 @@ AIUsage/
 │       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
 │       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
 │       ├── PlanCardView.swift              # User tier badge & subscription management
-│       ├── CreditsCardView.swift           # Prompt & flow credit indicators
 │       ├── LiquidGlass.swift               # macOS 27 Liquid Glass design system helpers
+│       ├── LiquidGlassComponents.swift     # Shared glass components: gauges, meters, tiles, chips, buttons, empty states
 │       └── AppIconHelper.swift             # Dynamic app icon loader & cache
 └── Tests/
     └── AIUsageTests/           # XCTest unit tests for pure logic (`swift test`)
@@ -69,7 +69,7 @@ AIUsage/
 
 When creating or modifying any SwiftUI views, popovers, cards, buttons, or indicators, **agents must adhere to the macOS 27 Liquid Glass UI design system**.
 
-The dedicated UI skill **`liquid-glass-macos27`** (created with `skill-creator`) is available in this repository under `.agents/skills/liquid-glass-macos27/` and globally at `~/.gemini/skills/liquid-glass-macos27/`.
+The dedicated UI skill **`liquid-glass-ui`** (created with `skill-creator`) is available in this repository under `.agents/skills/liquid-glass-ui/`.
 
 ### Core Liquid Glass Rules:
 1. **Translucent Refractive Substrates**:
@@ -85,7 +85,7 @@ The dedicated UI skill **`liquid-glass-macos27`** (created with `skill-creator`)
 4. **Accessibility First**:
    - Always observe `@Environment(\.accessibilityReduceTransparency)`. When enabled, fallback cleanly to opaque semantic system backgrounds (`Color(NSColor.controlBackgroundColor)`).
 
-Refer to the skill documentation at `.agents/skills/liquid-glass-macos27/SKILL.md` and reference tokens in `references/design-tokens.md` for full implementation details.
+Refer to the skill documentation at `.agents/skills/liquid-glass-ui/SKILL.md` and reference tokens in `references/design-tokens.md` for full implementation details.
 
 ---
 
@@ -134,7 +134,7 @@ Execute commands directly from the repository root:
   ```
 - **Validate Skills (via skill-creator)**:
   ```bash
-  python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py .agents/skills/liquid-glass-macos27
+  python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py .agents/skills/liquid-glass-ui
   python3 ~/.gemini/skills/skill-creator/scripts/quick_validate.py .agents/skills/aiusage-release
   ```
 
