@@ -1,0 +1,41 @@
+# SwiftLint configuration. CI runs this in advisory mode: findings are annotated
+# on the PR but never block merging. Tuned to the existing house style.
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+
+disabled_rules:
+  - todo
+  # Matches system defaults keys such as NSGlassTintAmount and short geometry names (x, y)
+  - identifier_name
+
+# House style indents blank lines to the surrounding code
+trailing_whitespace:
+  ignores_empty_lines: true
+
+line_length:
+  warning: 200
+  error: 300
+  ignores_urls: true
+  ignores_comments: true
+
+# SwiftUI views are long by nature; flag only outliers
+file_length:
+  warning: 1000
+  error: 1500
+type_body_length:
+  warning: 800
+  error: 1200
+function_body_length:
+  warning: 150
+  error: 300
+
+opt_in_rules:
+  - empty_count
+  - first_where
+  - contains_over_first_not_nil
+  - redundant_nil_coalescing

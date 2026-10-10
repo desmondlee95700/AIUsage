@@ -25,12 +25,13 @@ Before cutting a release, verify:
 1. **Working Tree Cleanliness**:
    - Run `git status` to ensure all intended changes are committed.
    - Stash or discard temporary debug files.
-2. **Swift Build Verification**:
-   - Run `swift build` to ensure zero compilation warnings or errors.
+2. **Build & Test Verification**:
+   - Confirm CI is green on `main` (`gh run list --workflow ci.yml --branch main --limit 1`).
+   - `release.sh` runs `swift test` before bumping; the Release workflow runs it again.
 3. **Branch Protection**:
    - Ensure the current working branch is `main`.
    - Never push directly to main without repository owner privileges (`desmondlee95700`).
-4. **GitHub CLI Authentication**:
+4. **GitHub CLI Authentication** (only needed for `--local-publish` and re-running workflows):
    - Run `gh auth status` to ensure active token authentication with `repo` scope.
 5. **No Existing Tag Collisions**:
    - Verify `git rev-parse vX.Y.Z` does not already exist locally or remotely.
@@ -40,7 +41,8 @@ Before cutting a release, verify:
 ## 3. Standard Release Steps
 
 ### Automated Mode (Recommended)
-Run the bundled release tool:
+Run the release tool. It tests, bumps, commits, tags, and pushes; the tag push triggers
+`.github/workflows/release.yml`, which builds the DMGs and publishes the GitHub Release.
 ```bash
 # Patch update (e.g. 2.1.0 -> 2.1.1):
 ./scripts/release.sh --patch
@@ -48,7 +50,7 @@ Run the bundled release tool:
 # Minor update (e.g. 2.1.0 -> 2.2.0):
 ./scripts/release.sh --minor
 
-# Explicit version with release notes:
+# Explicit version with release highlights:
 ./scripts/release.sh 2.1.1 -m "Fixed quota alerts and reorganized context menu."
 ```
 
@@ -56,37 +58,27 @@ Run the bundled release tool:
 If executing manually without the script:
 
 1. **Update Version Strings**:
-   - Edit `Sources/Models/AppVersion.swift`:
-     - Update fallback string in `current` to `"X.Y.Z"`.
-     - Update fallback string in `build` to `"N"`.
-   - Edit `scripts/build_app.sh`:
-     - `APP_VERSION="X.Y.Z"`
-     - `APP_BUILD="N"`
+   - Edit `Sources/Models/AppVersion.swift`: update the fallback strings in `current` (`"X.Y.Z"`) and `build` (`"N"`).
+   - Edit `scripts/build_app.sh`: `APP_VERSION="X.Y.Z"` and `APP_BUILD="N"`.
 
-2. **Compile Release Binary & DMGs**:
-   ```bash
-   ./scripts/build_dmg.sh
-   ```
-   Verify that `AIUsage.dmg` and `AIUsage-vX.Y.Z.dmg` are generated in the project root.
-
-3. **Stage, Commit & Tag**:
+2. **Stage, Commit & Tag**:
    ```bash
    git add Sources/Models/AppVersion.swift scripts/build_app.sh
    git commit -m "chore(release): vX.Y.Z (build N)"
    git tag -a "vX.Y.Z" -m "Release vX.Y.Z"
    ```
 
-4. **Push Branch & Tags**:
+3. **Push Branch & Tag** (starts the Release workflow):
    ```bash
    git push origin main
    git push origin vX.Y.Z
    ```
 
-5. **Publish GitHub Release**:
+4. **Fallback - publish locally** only if GitHub Actions is unavailable:
    ```bash
-   gh release create "vX.Y.Z" AIUsage.dmg "AIUsage-vX.Y.Z.dmg" \
-       --title "AIUsage vX.Y.Z" \
-       --generate-notes
+   ./scripts/build_dmg.sh
+   ./scripts/release_notes.sh vX.Y.Z > notes.md
+   gh release create "vX.Y.Z" AIUsage.dmg "AIUsage-vX.Y.Z.dmg" --title "AIUsage vX.Y.Z" --notes-file notes.md --verify-tag
    ```
 
 ---
@@ -109,6 +101,10 @@ If executing manually without the script:
   ```bash
   git tag -d vX.Y.Z
   git push origin :refs/tags/vX.Y.Z
+  ```
+- **Release workflow failed**: Re-run it for the existing tag:
+  ```bash
+  gh workflow run release.yml -f tag=vX.Y.Z
   ```
 - **Release failed mid-upload**: Re-upload assets or edit existing release:
   ```bash

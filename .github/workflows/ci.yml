@@ -1,0 +1,73 @@
+name: CI
+
+# Runs on every PR and every push to main. Never releases anything;
+# publishing is handled by release.yml when a version tag is pushed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build (warnings as errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
+
+      - name: Test
+        run: swift test --skip-build
+
+      - name: Package & sign app bundle
+        run: ./scripts/build_app.sh
+
+  conventions:
+    name: Conventions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Network policy (AGENTS.md §6.3)
+        run: ./scripts/check_network_policy.sh
+
+      - name: PR title follows Conventional Commits
+        if: github.event_name == 'pull_request'
+        env:
+          # Passed via env, never interpolated into the script, so a crafted title can't inject shell
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error title=PR title::\"$TITLE\" must follow Conventional Commits, e.g. \"fix(codex): stop reads from blocking\" or \"feat: add Cursor provider\""
+            exit 1
+          fi
+          echo "PR title OK: $TITLE"
+
+  lint:
+    name: SwiftLint (advisory)
+    runs-on: macos-15
+    timeout-minutes: 10
+    # Style findings are reported inline on the PR but never block merging
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: command -v swiftlint || brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --reporter github-actions-logging

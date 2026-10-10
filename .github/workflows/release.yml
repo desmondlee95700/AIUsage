@@ -1,0 +1,90 @@
+name: Release
+
+# The only way a release is published. Triggered by pushing a version tag
+# (`./scripts/release.sh --patch` does this), so merging PRs never releases.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish, e.g. v2.1.3
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0 # full history for the main-branch check and release notes
+
+      - name: Verify tag
+        run: |
+          # Pattern in a variable: bash 3.2 can't parse parentheses in an inline regex
+          SEMVER_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+          if [[ ! "$TAG" =~ $SEMVER_PATTERN ]]; then
+            echo "::error::Tag $TAG is not a semantic version like v2.1.3"; exit 1
+          fi
+
+          # Only release commits that are on main
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag $TAG points at a commit that is not on main"; exit 1
+          fi
+
+          # The tag must match the version baked into the app, or the in-app updater misbehaves
+          VERSION="${TAG#v}"
+          SCRIPT_VERSION=$(grep '^APP_VERSION=' scripts/build_app.sh | cut -d'"' -f2)
+          SOURCE_VERSION=$(grep -A6 'static var current' Sources/Models/AppVersion.swift | grep -oE 'return "[^"]+"' | cut -d'"' -f2)
+          if [[ "$SCRIPT_VERSION" != "$VERSION" || "$SOURCE_VERSION" != "$VERSION" ]]; then
+            echo "::error::Tag $TAG does not match build_app.sh ($SCRIPT_VERSION) / AppVersion.swift ($SOURCE_VERSION). Use ./scripts/release.sh to bump and tag together."
+            exit 1
+          fi
+
+      - name: Check for existing release
+        id: existing
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists (published locally?); skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        if: steps.existing.outputs.skip != 'true'
+        run: swift test
+
+      - name: Build DMGs
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          ./scripts/build_dmg.sh
+          test -f AIUsage.dmg
+          test -f "AIUsage-$TAG.dmg"
+
+      - name: Release notes
+        # checkout can fetch annotated tags as lightweight; refetch so highlights in the tag message survive
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          git fetch --force --tags origin
+          ./scripts/release_notes.sh "$TAG" | tee release-notes.md
+
+      - name: Publish GitHub Release
+        if: steps.existing.outputs.skip != 'true'
+        run: |
+          ARGS=("$TAG" AIUsage.dmg "AIUsage-$TAG.dmg" --title "AIUsage $TAG" --notes-file release-notes.md --verify-tag)
+          # Pre-release tags (v2.2.0-beta.1) are hidden from /releases/latest, which the in-app updater uses
+          [[ "$TAG" == *-* ]] && ARGS+=(--prerelease)
+          gh release create "${ARGS[@]}"
