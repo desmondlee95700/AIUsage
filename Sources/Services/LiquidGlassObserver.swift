@@ -55,12 +55,11 @@ public final class LiquidGlassObserver: ObservableObject {
     }
 
     private func startObserving() {
-        // KVO: fires immediately with the current value and on every in-process change.
-        observation = defaults.observe(\.NSGlassTintAmount, options: [.new, .initial]) { [weak self] _, change in
-            guard let self, let newValue = change.newValue else { return }
-            DispatchQueue.main.async {
-                self.tintAmount = newValue
-            }
+        // KVO: fires on every in-process change. Re-read through readCurrentValue() rather than
+        // using change.newValue, which reports 0.0 when the key is missing and would override
+        // the 0.5 system default. No `.initial`: init() already read the current value.
+        observation = defaults.observe(\.NSGlassTintAmount, options: [.new]) { [weak self] _, _ in
+            self?.readCurrentValue()
         }
 
         // DidChangeNotification: catches cross-process writes from System Settings

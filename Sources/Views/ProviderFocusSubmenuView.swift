@@ -44,9 +44,8 @@ public struct ProviderFocusSubmenuView: View {
                 menuRow(
                     id: "all",
                     title: "All Providers",
-                    icon: AppIconHelper.dualTemplate,
+                    icon: AppIconHelper.combinedTemplate(for: service.installedProviders),
                     systemFallback: "sparkles",
-                    shortcut: "⌘A",
                     isChecked: service.isAllProvidersSelected
                 ) {
                     service.selectAllProviders()
@@ -65,7 +64,6 @@ public struct ProviderFocusSubmenuView: View {
                     title: "Antigravity (Google)",
                     icon: AppIconHelper.antigravityTemplate,
                     systemFallback: "sparkles",
-                    shortcut: "⌘1",
                     isChecked: service.isProviderSelected(.gemini)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -83,7 +81,6 @@ public struct ProviderFocusSubmenuView: View {
                     title: "ChatGPT (OpenAI)",
                     icon: AppIconHelper.chatgptTemplate,
                     systemFallback: "circle.hexagongrid",
-                    shortcut: "⌘2",
                     isChecked: service.isProviderSelected(.chatgpt)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -101,7 +98,6 @@ public struct ProviderFocusSubmenuView: View {
                     title: "Claude (Anthropic)",
                     icon: AppIconHelper.claudeTemplate,
                     systemFallback: "asterisk",
-                    shortcut: "⌘3",
                     isChecked: service.isProviderSelected(.claude)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -157,7 +153,6 @@ public struct ProviderFocusSubmenuView: View {
         title: String,
         icon: NSImage?,
         systemFallback: String,
-        shortcut: String,
         isChecked: Bool,
         action: @escaping () -> Void
     ) -> some View {
@@ -201,11 +196,6 @@ public struct ProviderFocusSubmenuView: View {
                     .lineLimit(1)
                 
                 Spacer()
-                
-                // Shortcut badge
-                Text(shortcut)
-                    .font(.system(size: 10.5, weight: .regular, design: .monospaced))
-                    .foregroundColor(isHovered ? .white.opacity(0.90) : .white.opacity(0.35))
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 4.5)

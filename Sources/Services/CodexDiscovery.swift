@@ -7,7 +7,22 @@ public struct CodexDiscovery {
         "com.openai.chat"
     ]
 
+    private static let cacheLock = NSLock()
+    private static var cachedBinaryPath: String?
+
+    /// Cached because the lookup may walk the whole ChatGPT.app bundle and runs on every refresh.
+    /// The cached path is re-validated each call, so an app update or uninstall triggers a fresh search.
     public static func findCodexBinary() -> String? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let cached = cachedBinaryPath, FileManager.default.isExecutableFile(atPath: cached) {
+            return cached
+        }
+        cachedBinaryPath = searchCodexBinary()
+        return cachedBinaryPath
+    }
+
+    private static func searchCodexBinary() -> String? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let fileManager = FileManager.default
 
@@ -72,16 +87,6 @@ public struct CodexDiscovery {
             guard seen.insert(path).inserted else { return false }
             return FileManager.default.fileExists(atPath: path)
         }
-    }
-    
-    public static var hasCodexAuth: Bool {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let authPath = "\(home)/.codex/auth.json"
-        return FileManager.default.fileExists(atPath: authPath)
-    }
-    
-    public static var isChatGPTAppInstalled: Bool {
-        !chatGPTApplicationURLs().isEmpty
     }
     
     public static var isCodexInstalled: Bool {

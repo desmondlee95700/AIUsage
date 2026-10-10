@@ -32,51 +32,6 @@ public enum AIProvider: String, CaseIterable, Codable, Identifiable {
         case .claude: return "Anthropic"
         }
     }
-    
-    public var symbolIcon: String {
-        switch self {
-        case .gemini: return "sparkles"
-        case .chatgpt: return "circle.hexagongrid"
-        case .claude: return "asterisk"
-        }
-    }
-    
-    public var badgeGlyph: String {
-        switch self {
-        case .gemini: return "✦"
-        case .chatgpt: return "✷"
-        case .claude: return "✽"
-        }
-    }
-}
-
-// MARK: - Provider Focus Mode (Syncs Popover & Menu Bar)
-
-public enum ProviderFocusMode: String, CaseIterable, Codable, Identifiable {
-    case gemini = "gemini"
-    case chatgpt = "chatgpt"
-    case claude = "claude"
-    case both = "both"
-    
-    public var id: String { rawValue }
-    
-    public var displayName: String {
-        switch self {
-        case .gemini: return "Antigravity (Google)"
-        case .chatgpt: return "ChatGPT (OpenAI)"
-        case .claude: return "Claude (Anthropic)"
-        case .both: return "All Providers"
-        }
-    }
-    
-    public var shortName: String {
-        switch self {
-        case .gemini: return "Antigravity"
-        case .chatgpt: return "ChatGPT"
-        case .claude: return "Claude"
-        case .both: return "All"
-        }
-    }
 }
 
 // MARK: - Quota Summary Models (Gemini / Antigravity)
@@ -378,12 +333,13 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
     
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.creditId = try? container.decodeIfPresent(String.self, forKey: .creditId)
-            ?? container.decodeIfPresent(String.self, forKey: .creditIdSnake)
-            ?? container.decodeIfPresent(String.self, forKey: .id)
-        self.resetType = try? container.decodeIfPresent(String.self, forKey: .resetType)
-            ?? container.decodeIfPresent(String.self, forKey: .resetTypeSnake)
-        self.status = try? container.decodeIfPresent(String.self, forKey: .status)
+        // Each key is tried on its own so a type mismatch on one doesn't discard the fallbacks
+        func string(_ key: CodingKeys) -> String? {
+            (try? container.decodeIfPresent(String.self, forKey: key)) ?? nil
+        }
+        self.creditId = string(.creditId) ?? string(.creditIdSnake) ?? string(.id)
+        self.resetType = string(.resetType) ?? string(.resetTypeSnake)
+        self.status = string(.status)
         
         if let ts = try? container.decodeIfPresent(Int.self, forKey: .grantedAt) {
             self.grantedAt = ts
@@ -622,6 +578,10 @@ public struct ClaudeUsageLimits: Codable, Equatable {
     public let opusRemainingPercent: Int?
     public let extraUsagePercent: Int?
     
+    /// Whether the server reported each window. When false, the matching percentages are placeholders.
+    public let hasFiveHourWindow: Bool
+    public let hasWeeklyWindow: Bool
+    
     public let lastUpdated: Date?
     
     public init(
@@ -634,6 +594,8 @@ public struct ClaudeUsageLimits: Codable, Equatable {
         sonnetRemainingPercent: Int? = nil,
         opusRemainingPercent: Int? = nil,
         extraUsagePercent: Int? = nil,
+        hasFiveHourWindow: Bool = true,
+        hasWeeklyWindow: Bool = true,
         lastUpdated: Date? = nil
     ) {
         self.fiveHourRemainingPercent = fiveHourRemainingPercent
@@ -645,6 +607,8 @@ public struct ClaudeUsageLimits: Codable, Equatable {
         self.sonnetRemainingPercent = sonnetRemainingPercent
         self.opusRemainingPercent = opusRemainingPercent
         self.extraUsagePercent = extraUsagePercent
+        self.hasFiveHourWindow = hasFiveHourWindow
+        self.hasWeeklyWindow = hasWeeklyWindow
         self.lastUpdated = lastUpdated
     }
     

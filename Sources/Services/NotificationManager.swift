@@ -26,13 +26,9 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let center = UNUserNotificationCenter.current()
         
         center.getNotificationSettings { [weak self] settings in
+            // This runs from background quota checks, so respect a denial silently
+            // rather than popping open System Settings unprompted.
             if settings.authorizationStatus == .denied {
-                // When permission is denied, open Notification settings for the user
-                DispatchQueue.main.async {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
                 return
             }
             

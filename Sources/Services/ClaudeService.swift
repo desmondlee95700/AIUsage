@@ -28,12 +28,16 @@ public final class ClaudeService {
         }
     }
     
-    public func fetch(forceRefresh: Bool = false, completion: @escaping (Result<ClaudeState, Error>) -> Void) {
-        if forceRefresh {
-            ClaudeKeyChainHelper.resetKeyCache()
-        }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+    /// Fetches run one at a time on this queue, so the cached state below is never touched concurrently.
+    private let fetchQueue = DispatchQueue(label: "AIUsage.ClaudeService.fetch", qos: .userInitiated)
+    
+    /// - Parameter pollInterval: The user's refresh interval in seconds (0 = manual); paces OAuth usage requests.
+    public func fetch(forceRefresh: Bool = false, pollInterval: TimeInterval, completion: @escaping (Result<ClaudeState, Error>) -> Void) {
+        fetchQueue.async {
+            self.usagePollInterval = pollInterval
+            if forceRefresh {
+                ClaudeKeyChainHelper.resetKeyCache()
+            }
             
             // 1. Try real desktop session via Claude Safe Storage cookie
             if let activeDesktopState = self.fetchFromDesktopSession() {
@@ -144,7 +148,8 @@ public final class ClaudeService {
         }.resume()
         semUsage.wait()
         
-        return ClaudeState(account: account, limits: fetchedLimits, isConnected: true)
+        // A transient usage failure shouldn't make a paid plan look like the free tier
+        return ClaudeState(account: account, limits: rememberLimits(fetchedLimits), isConnected: true)
     }
     
     // MARK: - Fallback Claude CLI ~/.claude.json
@@ -202,8 +207,8 @@ public final class ClaudeService {
         func remaining(_ util: Double?) -> Int? {
             util.map { max(0, min(100, 100 - Int(round($0)))) }
         }
-        let fhRemaining = remaining(fhObj?["utilization"] as? Double ?? 0.0) ?? 100
-        let sdRemaining = remaining(sdObj?["utilization"] as? Double ?? 0.0) ?? 100
+        let fhRemaining = remaining(fhObj?["utilization"] as? Double) ?? 100
+        let sdRemaining = remaining(sdObj?["utilization"] as? Double) ?? 100
         
         return ClaudeUsageLimits(
             fiveHourRemainingPercent: fhRemaining,
@@ -215,6 +220,8 @@ public final class ClaudeService {
             sonnetRemainingPercent: remaining(snObj?["utilization"] as? Double),
             opusRemainingPercent: remaining(soObj?["utilization"] as? Double),
             extraUsagePercent: remaining(extraObj?["utilization"] as? Double),
+            hasFiveHourWindow: fhObj != nil,
+            hasWeeklyWindow: sdObj != nil,
             lastUpdated: Date()
         )
     }
@@ -223,7 +230,7 @@ public final class ClaudeService {
     private var lastGoodLimits: ClaudeUsageLimits?
     private var lastGoodAt = Date.distantPast
     /// Mirrors the user's refresh interval (seconds; 0 = manual, every fetch goes through).
-    public var usagePollInterval: TimeInterval = 60
+    private var usagePollInterval: TimeInterval = 60
     private let rateLimitBackoff: TimeInterval = 60     // floor after a 429 (the endpoint sends Retry-After: 0)
     private var staleGrace: TimeInterval { max(900, usagePollInterval * 3) }  // keep last good numbers through brief failures
     
@@ -234,12 +241,22 @@ public final class ClaudeService {
     /// Requests follow the user's refresh interval; the last good result is reused for up to `staleGrace`, after which nil
     /// (the "Connection Lost" state) is returned.
     private func fetchUsageWithOAuth() -> ClaudeUsageLimits? {
+        var fresh: ClaudeUsageLimits?
         if Date() >= oauthRetryAfter {
-            if let limits = requestUsage() {
-                lastGoodLimits = limits
-                lastGoodAt = Date()
+            fresh = requestUsage()
+            if fresh != nil {
                 oauthRetryAfter = Date().addingTimeInterval(usagePollInterval)
             }
+        }
+        return rememberLimits(fresh)
+    }
+    
+    /// Records a successful result, or falls back to the last good one while it's within `staleGrace`.
+    private func rememberLimits(_ fresh: ClaudeUsageLimits?) -> ClaudeUsageLimits? {
+        if let fresh = fresh {
+            lastGoodLimits = fresh
+            lastGoodAt = Date()
+            return fresh
         }
         return Date().timeIntervalSince(lastGoodAt) <= staleGrace ? lastGoodLimits : nil
     }
@@ -252,16 +269,22 @@ public final class ClaudeService {
         
         let sem = DispatchSemaphore(value: 0)
         var limits: ClaudeUsageLimits? = nil
-        session.dataTask(with: req) { [weak self] data, resp, _ in
+        var retryAfterSeconds: Double? = nil
+        session.dataTask(with: req) { data, resp, _ in
             defer { sem.signal() }
             guard let http = resp as? HTTPURLResponse else { return }
             if http.statusCode == 429, let ra = http.value(forHTTPHeaderField: "Retry-After"), let secs = Double(ra) {
-                self?.oauthRetryAfter = Date().addingTimeInterval(max(secs, self?.rateLimitBackoff ?? 60))
+                retryAfterSeconds = secs
             }
             guard http.statusCode == 200 else { return }
             limits = Self.parseUsageLimits(data)
         }.resume()
         sem.wait()
+        
+        // Applied here rather than in the callback so state is only mutated on fetchQueue
+        if let secs = retryAfterSeconds {
+            oauthRetryAfter = Date().addingTimeInterval(max(secs, rateLimitBackoff))
+        }
         return limits
     }
     
@@ -363,10 +386,15 @@ private struct ClaudeKeyChainHelper {
         var db: OpaquePointer?
         guard sqlite3_open_v2(cookiePath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_close(db) }
+        
+        // Chromium cookie DB v24+ prefixes each decrypted value with a 32-byte SHA-256 of the host
+        let hasHostDigestPrefix = cookieDBVersion(db) >= 24
+        
         var stmt: OpaquePointer?
-        let query = "SELECT encrypted_value FROM cookies WHERE name = \"" + name + "\""
+        let query = "SELECT encrypted_value FROM cookies WHERE name = ? AND host_key LIKE '%claude.ai' ORDER BY length(host_key) DESC LIMIT 1"
         guard sqlite3_prepare_v2(db, query, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
         if sqlite3_step(stmt) == SQLITE_ROW {
             guard let blob = sqlite3_column_blob(stmt, 0) else { return nil }
             let count = Int(sqlite3_column_bytes(stmt, 0))
@@ -386,12 +414,21 @@ private struct ClaudeKeyChainHelper {
                 &decrypted, decrypted.count,
                 &numBytesDecrypted
             )
-            if status == kCCSuccess && numBytesDecrypted > 32 {
+            let prefixLength = hasHostDigestPrefix ? 32 : 0
+            if status == kCCSuccess && numBytesDecrypted > prefixLength {
                 let res = Data(decrypted.prefix(numBytesDecrypted))
-                return String(data: res.subdata(in: 32..<res.count), encoding: .utf8)
+                return String(data: res.subdata(in: prefixLength..<res.count), encoding: .utf8)
             }
         }
         return nil
+    }
+    
+    private static func cookieDBVersion(_ db: OpaquePointer?) -> Int {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT value FROM meta WHERE key = 'version'", -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW, let text = sqlite3_column_text(stmt, 0) else { return 0 }
+        return Int(String(cString: text)) ?? 0
     }
     
     static func resetKeyCache() {

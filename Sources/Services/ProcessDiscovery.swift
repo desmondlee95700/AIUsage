@@ -22,7 +22,24 @@ public final class InsecureTrustDelegate: NSObject, URLSessionDelegate {
 }
 
 public class ProcessDiscovery {
-    private static var cachedServer: DiscoveredServer?
+    private static let cacheLock = NSLock()
+    private static var _cachedServer: DiscoveredServer?
+    private static var cachedServer: DiscoveredServer? {
+        get { cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedServer }
+        set { cacheLock.lock(); _cachedServer = newValue; cacheLock.unlock() }
+    }
+    
+    /// One session for all loopback probes. Sessions retain their delegate until
+    /// invalidated, so creating one per probe leaks.
+    private static let probeSession = URLSession(
+        configuration: .ephemeral,
+        delegate: InsecureTrustDelegate.shared,
+        delegateQueue: nil
+    )
+    
+    public static func invalidateCache() {
+        cachedServer = nil
+    }
     
     public static var isAntigravityInstalled: Bool {
         let fileManager = FileManager.default
@@ -50,11 +67,10 @@ public class ProcessDiscovery {
     }
     
     public static func discover(forceRefresh: Bool = false) -> DiscoveredServer? {
+        // Callers verify the cached server by using it and call invalidateCache() on failure,
+        // so there's no separate health-check request here.
         if !forceRefresh, let cached = cachedServer {
-            if isServerHealthy(cached) {
-                return cached
-            }
-            cachedServer = nil
+            return cached
         }
         
         let candidates = findProcessCandidates()
@@ -100,9 +116,13 @@ public class ProcessDiscovery {
                 guard parts.count >= 2, let pid = Int(parts[0]) else { continue }
                 let command = String(parts[1])
                 
+                // Accepts both `--csrf_token VALUE` and `--csrf_token=VALUE`
                 var token = ""
                 if let range = command.range(of: "--csrf_token") {
-                    let sub = command[range.upperBound...].trimmingCharacters(in: .whitespaces)
+                    var sub = command[range.upperBound...].trimmingCharacters(in: .whitespaces)
+                    if sub.hasPrefix("=") {
+                        sub.removeFirst()
+                    }
                     token = sub.components(separatedBy: .whitespaces).first ?? ""
                 }
                 
@@ -145,10 +165,9 @@ public class ProcessDiscovery {
             }
             
             let sourceName = candidate.isApp ? "Antigravity App" : "Antigravity IDE"
-            let session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
-            
+    
             for port in ports {
-                if testEndpoint(port: port, token: candidate.csrfToken, session: session) {
+                if testEndpoint(port: port, token: candidate.csrfToken) {
                     return DiscoveredServer(pid: candidate.pid, csrfToken: candidate.csrfToken, port: port, sourceName: sourceName)
                 }
             }
@@ -159,7 +178,7 @@ public class ProcessDiscovery {
         return nil
     }
     
-    private static func testEndpoint(port: Int, token: String, session: URLSession) -> Bool {
+    private static func testEndpoint(port: Int, token: String) -> Bool {
         guard let url = URL(string: "https://127.0.0.1:\(port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") else {
             return false
         }
@@ -174,20 +193,19 @@ public class ProcessDiscovery {
         
         var success = false
         let sem = DispatchSemaphore(value: 0)
-        let task = session.dataTask(with: request) { _, response, error in
+        let task = probeSession.dataTask(with: request) { _, response, error in
             if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                 success = true
             }
             sem.signal()
         }
         task.resume()
-        _ = sem.wait(timeout: .now() + 2.5)
+        if sem.wait(timeout: .now() + 2.5) == .timedOut {
+            // Don't read `success` while the callback may still write it
+            task.cancel()
+            sem.wait()
+        }
         return success
-    }
-    
-    public static func isServerHealthy(_ server: DiscoveredServer) -> Bool {
-        let session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
-        return testEndpoint(port: server.port, token: server.csrfToken, session: session)
     }
     
     public static func launchAntigravityApp() {

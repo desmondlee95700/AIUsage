@@ -131,9 +131,23 @@ public class StatusBarController {
     
     // MARK: - Template Menu Bar Image Generator
     
-    // MARK: - Template Menu Bar Image Generator
-    
     private func renderMenuBarImage() -> NSImage {
+        let providers = service.selectedInstalledProviders
+        providerSegments = []
+        
+        if providers.isEmpty {
+            let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
+            icon.isTemplate = true
+            return icon
+        }
+        
+        if service.displayMode == .iconOnly {
+            let icon = AppIconHelper.combinedTemplate(for: providers)
+                ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
+            icon.isTemplate = true
+            return icon
+        }
+        
         let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
         let textAttrs: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -147,170 +161,57 @@ public class StatusBarController {
         let iconSize: CGFloat = 14.0
         let height: CGFloat = 18.0
         
-        let providers = service.selectedInstalledProviders
-        providerSegments = []
-        
-        if providers.isEmpty {
-            let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
-            icon.isTemplate = true
-            return icon
-        }
-        
-        if service.displayMode == .iconOnly {
-            let icon: NSImage
-            if providers.count == 1 {
-                switch providers[0] {
-                case .gemini:
-                    icon = AppIconHelper.antigravityTemplate ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
-                case .chatgpt:
-                    icon = AppIconHelper.chatgptTemplate ?? NSImage(systemSymbolName: "circle.hexagongrid", accessibilityDescription: nil)!
-                case .claude:
-                    icon = AppIconHelper.claudeTemplate ?? NSImage(systemSymbolName: "asterisk", accessibilityDescription: nil)!
-                }
-            } else {
-                icon = AppIconHelper.dualTemplate ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)!
-            }
-            icon.isTemplate = true
-            return icon
-        }
-        
-        if providers.count == 1 {
-            return renderSingleProviderImage(provider: providers[0])
-        }
-        
         struct ProviderRenderItem {
             let provider: AIProvider
             let icon: NSImage?
-            let text: String
+            let text: NSAttributedString
+            var iconWidth: CGFloat { icon != nil ? 14.0 : 0 }
+            var textWidth: CGFloat { text.size().width }
         }
-        var items: [ProviderRenderItem] = []
-        for p in providers {
-            switch p {
-            case .gemini:
-                items.append(ProviderRenderItem(
-                    provider: p,
-                    icon: AppIconHelper.antigravityTemplate,
-                    text: service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Off"
-                ))
-            case .chatgpt:
-                items.append(ProviderRenderItem(
-                    provider: p,
-                    icon: AppIconHelper.chatgptTemplate,
-                    text: service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Off"
-                ))
-            case .claude:
-                let claudeText: String = {
-                    guard service.isClaudeConnected else { return " Off" }
-                    if let pct = service.claudePercentage {
-                        return " \(pct)%"
-                    } else {
-                        return " \(service.claudeAccount?.tierBadge ?? "Free")"
-                    }
-                }()
-                items.append(ProviderRenderItem(
-                    provider: p,
-                    icon: AppIconHelper.claudeTemplate,
-                    text: claudeText
-                ))
-            }
+        let items = providers.map { provider in
+            ProviderRenderItem(
+                provider: provider,
+                icon: AppIconHelper.template(for: provider),
+                text: NSAttributedString(string: " " + service.badgeText(for: provider), attributes: textAttrs)
+            )
         }
         
         let sepText = NSAttributedString(string: "  ·  ", attributes: secondaryAttrs)
         let sepWidth = sepText.size().width
         
-        var totalWidth: CGFloat = 0
-        var itemWidths: [(iconWidth: CGFloat, textWidth: CGFloat, textAttr: NSAttributedString)] = []
-        
-        for (idx, item) in items.enumerated() {
-            let textAttr = NSAttributedString(string: item.text, attributes: textAttrs)
-            let iconW: CGFloat = item.icon != nil ? iconSize : 0
-            let textW: CGFloat = textAttr.size().width
-            itemWidths.append((iconW, textW, textAttr))
-            totalWidth += iconW + textW
-            if idx < items.count - 1 {
-                totalWidth += sepWidth
-            }
-        }
+        var totalWidth: CGFloat = items.reduce(0) { $0 + $1.iconWidth + $1.textWidth }
+        totalWidth += sepWidth * CGFloat(items.count - 1)
         totalWidth = ceil(totalWidth)
         
         // Record each provider's horizontal span; the separator is split evenly between neighbours.
         var segX: CGFloat = 0
         for (idx, item) in items.enumerated() {
-            let w = itemWidths[idx]
             let start = idx == 0 ? 0 : segX - sepWidth / 2
-            segX += w.iconWidth + w.textWidth
+            segX += item.iconWidth + item.textWidth
             let end = idx == items.count - 1 ? totalWidth : segX + sepWidth / 2
             providerSegments.append((item.provider, start...end))
             segX += sepWidth
         }
         
-        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
+        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { _ in
             var x: CGFloat = 0
             let iconY: CGFloat = (height - iconSize) / 2
             
             for (idx, item) in items.enumerated() {
-                let w = itemWidths[idx]
-                let textY: CGFloat = (height - w.textAttr.size().height) / 2
+                let textY: CGFloat = (height - item.text.size().height) / 2
                 
                 if let ic = item.icon {
                     ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
                     x += iconSize
                 }
-                w.textAttr.draw(at: NSPoint(x: x, y: textY))
-                x += w.textWidth
+                item.text.draw(at: NSPoint(x: x, y: textY))
+                x += item.textWidth
                 
                 if idx < items.count - 1 {
                     sepText.draw(at: NSPoint(x: x, y: textY))
                     x += sepWidth
                 }
             }
-            return true
-        }
-        img.isTemplate = true
-        return img
-    }
-    
-    private func renderSingleProviderImage(provider: AIProvider) -> NSImage {
-        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-        let textAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.black
-        ]
-        let iconSize: CGFloat = 14.0
-        let height: CGFloat = 18.0
-        
-        let icon: NSImage?
-        let textStr: String
-        
-        switch provider {
-        case .gemini:
-            icon = AppIconHelper.antigravityTemplate
-            textStr = service.isGeminiConnected ? " \(service.geminiPercentage)%" : " Off"
-        case .chatgpt:
-            icon = AppIconHelper.chatgptTemplate
-            textStr = service.isCodexConnected ? " \(service.codexRemainingPercentage)%" : " Off"
-        case .claude:
-            icon = AppIconHelper.claudeTemplate
-            if service.isClaudeConnected {
-                textStr = service.claudePercentage != nil ? " \(service.claudePercentage!)%" : " \(service.claudeAccount?.tierBadge ?? "Free")"
-            } else {
-                textStr = " Off"
-            }
-        }
-        
-        let text = NSAttributedString(string: textStr, attributes: textAttrs)
-        let totalWidth = ceil((icon != nil ? iconSize : 0) + text.size().width)
-        
-        let img = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { rect in
-            var x: CGFloat = 0
-            let iconY: CGFloat = (height - iconSize) / 2
-            let textY: CGFloat = (height - text.size().height) / 2
-            
-            if let ic = icon {
-                ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
-                x += iconSize
-            }
-            text.draw(at: NSPoint(x: x, y: textY))
             return true
         }
         img.isTemplate = true
@@ -372,17 +273,7 @@ public class StatusBarController {
         menu.addItem(titleItem)
         menu.addItem(NSMenuItem.separator())
         
-        let selectedFocusIcon: NSImage? = {
-            let selected = service.selectedInstalledProviders
-            if selected.count == 1 {
-                switch selected[0] {
-                case .gemini: return AppIconHelper.antigravityTemplate
-                case .chatgpt: return AppIconHelper.chatgptTemplate
-                case .claude: return AppIconHelper.claudeTemplate
-                }
-            }
-            return AppIconHelper.dualTemplate
-        }()
+        let selectedFocusIcon = AppIconHelper.combinedTemplate(for: service.selectedInstalledProviders)
         
         // Provider Focus Submenu (Multi-Choice with persistent selection that doesn't close)
         let focusMenu = NSMenu()
@@ -497,64 +388,6 @@ public class StatusBarController {
     
     @objc private func launchClaudeAction() {
         ClaudeDiscovery.launchClaudeApp()
-    }
-    
-    @objc private func selectAllProvidersAction() {
-        service.selectAllProviders()
-        updateStatusButton()
-    }
-    
-    @objc private func toggleGeminiAction(_ sender: NSMenuItem) {
-        if NSEvent.modifierFlags.contains(.option) {
-            service.selectOnlyProvider(.gemini)
-        } else {
-            service.toggleProviderSelection(.gemini)
-        }
-        updateStatusButton()
-    }
-    
-    @objc private func toggleChatGPTAction(_ sender: NSMenuItem) {
-        if NSEvent.modifierFlags.contains(.option) {
-            service.selectOnlyProvider(.chatgpt)
-        } else {
-            service.toggleProviderSelection(.chatgpt)
-        }
-        updateStatusButton()
-    }
-    
-    @objc private func toggleClaudeAction(_ sender: NSMenuItem) {
-        if NSEvent.modifierFlags.contains(.option) {
-            service.selectOnlyProvider(.claude)
-        } else {
-            service.toggleProviderSelection(.claude)
-        }
-        updateStatusButton()
-    }
-    
-    @objc private func switchToBothAction() {
-        service.selectAllProviders()
-        updateStatusButton()
-    }
-    
-    @objc private func switchToGeminiAction() {
-        service.selectOnlyProvider(.gemini)
-        updateStatusButton()
-    }
-    
-    @objc private func switchToChatGPTAction() {
-        service.selectOnlyProvider(.chatgpt)
-        updateStatusButton()
-    }
-    
-    @objc private func switchToClaudeAction() {
-        service.selectOnlyProvider(.claude)
-        updateStatusButton()
-    }
-    
-    @objc private func changeDisplayModeAction(_ sender: NSMenuItem) {
-        if let mode = sender.representedObject as? MenuBarDisplayMode {
-            service.displayMode = mode
-        }
     }
     
     @objc private func changeRefreshIntervalAction(_ sender: NSMenuItem) {

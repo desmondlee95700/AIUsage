@@ -31,6 +31,17 @@ public class CodexService {
         }
     }
 
+    /// Splits complete newline-terminated lines off the front of `buffer`, leaving any partial line.
+    /// Works on raw bytes so a read that ends inside a multi-byte UTF-8 character can't drop output.
+    private static func takeLines(from buffer: inout Data) -> [Data] {
+        var lines: [Data] = []
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            lines.append(Data(buffer[buffer.startIndex..<newline]))
+            buffer.removeSubrange(buffer.startIndex...newline)
+        }
+        return lines
+    }
+
     public func fetch(completion: @escaping (Result<CodexPayload, Error>) -> Void) {
         guard let binaryPath = CodexDiscovery.findCodexBinary() else {
             completion(.failure(NSError(domain: "CodexService", code: 404, userInfo: [
@@ -83,7 +94,7 @@ public class CodexService {
             // Ids of responses that arrived, whether or not they decoded, so a
             // payload we can't parse never leaves us waiting for more output.
             var answered = Set<Int>()
-            var buffer = ""
+            var buffer = Data()
             let handle = stdoutPipe.fileHandleForReading
             let deadline = Date().addingTimeInterval(timeout)
 
@@ -99,41 +110,33 @@ public class CodexService {
                     break
                 }
 
-                if let str = String(data: chunk, encoding: .utf8) {
-                    buffer += str
-                    var lines = buffer.components(separatedBy: "\n")
-                    buffer = lines.removeLast() // Keep trailing partial line
+                buffer.append(chunk)
+                for lineData in Self.takeLines(from: &buffer) where !lineData.isEmpty {
+                    // Notifications carry no id and server requests carry a
+                    // method, so neither matches one of our responses
+                    guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                          json["method"] == nil,
+                          let id = json["id"] as? Int else { continue }
 
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { continue }
-
-                        // Notifications carry no id and server requests carry a
-                        // method, so neither matches one of our responses
-                        guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                              json["method"] == nil,
-                              let id = json["id"] as? Int else { continue }
-
-                        // Check which response it is
-                        switch id {
-                        case 2:
-                            answered.insert(id)
-                            if let resp = try? JSONDecoder().decode(RPCResponse<CodexRateLimitsResponse>.self, from: lineData) {
-                                fetchedRateLimits = resp.result
-                            }
-                        case 3:
-                            answered.insert(id)
-                            if let resp = try? JSONDecoder().decode(RPCResponse<CodexAccountResponse>.self, from: lineData) {
-                                fetchedAccount = resp.result?.account
-                            }
-                        case 4:
-                            answered.insert(id)
-                            if let resp = try? JSONDecoder().decode(RPCResponse<CodexUsageResponse>.self, from: lineData) {
-                                fetchedUsage = resp.result?.summary
-                            }
-                        default:
-                            break
+                    // Check which response it is
+                    switch id {
+                    case 2:
+                        answered.insert(id)
+                        if let resp = try? JSONDecoder().decode(RPCResponse<CodexRateLimitsResponse>.self, from: lineData) {
+                            fetchedRateLimits = resp.result
                         }
+                    case 3:
+                        answered.insert(id)
+                        if let resp = try? JSONDecoder().decode(RPCResponse<CodexAccountResponse>.self, from: lineData) {
+                            fetchedAccount = resp.result?.account
+                        }
+                    case 4:
+                        answered.insert(id)
+                        if let resp = try? JSONDecoder().decode(RPCResponse<CodexUsageResponse>.self, from: lineData) {
+                            fetchedUsage = resp.result?.summary
+                        }
+                    default:
+                        break
                     }
                 }
             }
@@ -229,7 +232,7 @@ public class CodexService {
             var outcome: ConsumeResetCreditOutcome?
             var serverError: String?
             
-            var buffer = ""
+            var buffer = Data()
             let handle = stdoutPipe.fileHandleForReading
             let deadline = Date().addingTimeInterval(timeout)
 
@@ -240,24 +243,16 @@ public class CodexService {
                     break
                 }
 
-                if let str = String(data: chunk, encoding: .utf8) {
-                    buffer += str
-                    var lines = buffer.components(separatedBy: "\n")
-                    buffer = lines.removeLast()
-                    
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { continue }
-                        
-                        guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                              json["method"] == nil,
-                              json["id"] as? Int == 5 else { continue }
+                buffer.append(chunk)
+                for lineData in Self.takeLines(from: &buffer) where !lineData.isEmpty {
+                    guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                          json["method"] == nil,
+                          json["id"] as? Int == 5 else { continue }
 
-                        if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
-                            serverError = msg
-                        } else if let res = json["result"] as? [String: Any], let rawOutcome = res["outcome"] as? String {
-                            outcome = ConsumeResetCreditOutcome(rawValue: rawOutcome) ?? .unknown
-                        }
+                    if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
+                        serverError = msg
+                    } else if let res = json["result"] as? [String: Any], let rawOutcome = res["outcome"] as? String {
+                        outcome = ConsumeResetCreditOutcome(rawValue: rawOutcome) ?? .unknown
                     }
                 }
             }

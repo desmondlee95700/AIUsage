@@ -254,7 +254,7 @@ public struct MainUsageView: View {
                         .liquidGlassButton(cornerRadius: 7, isProminent: false)
                 }
                 .buttonStyle(.plain)
-                .help("Refresh quotas for both providers")
+                .help("Refresh quotas for all selected providers")
                 
                 // Quit Button
                 Button(action: {
@@ -317,7 +317,7 @@ public struct MainUsageView: View {
                     subtitle: "Google",
                     icon: AppIconHelper.antigravityIcon,
                     systemFallback: "sparkles",
-                    badge: service.isGeminiConnected ? "\(service.geminiPercentage)%" : "Off",
+                    badge: service.badgeText(for: .gemini),
                     accentColor: Color(red: 0.28, green: 0.54, blue: 0.98)
                 )
             }
@@ -329,29 +329,20 @@ public struct MainUsageView: View {
                     subtitle: "OpenAI",
                     icon: AppIconHelper.chatgptIcon,
                     systemFallback: "circle.hexagongrid",
-                    badge: service.isCodexConnected ? "\(service.codexRemainingPercentage)%" : "Off",
+                    badge: service.badgeText(for: .chatgpt),
                     accentColor: Color(red: 0.16, green: 0.74, blue: 0.52)
                 )
             }
             
             if service.selectedInstalledProviders.contains(.claude) {
-                let badgeText: String = {
-                    guard service.isClaudeConnected else { return "Off" }
-                    if let pct = service.claudePercentage {
-                        return "\(pct)%"
-                    } else {
-                        return service.claudeAccount?.tierBadge ?? "Free"
-                    }
-                }()
                 dualProviderTabButton(
                     provider: .claude,
                     title: "Claude",
                     subtitle: "Anthropic",
                     icon: AppIconHelper.claudeIcon,
                     systemFallback: "asterisk",
-                    badge: badgeText,
-                    accentColor: Color(red: 0.85, green: 0.45, blue: 0.25),
-                    isDisabled: false
+                    badge: service.badgeText(for: .claude),
+                    accentColor: Color(red: 0.85, green: 0.45, blue: 0.25)
                 )
             }
         }
@@ -835,7 +826,7 @@ public struct MainUsageView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 
-                Text("Install Antigravity or ChatGPT for macOS to monitor live model quotas and rate limits.")
+                Text("Install Antigravity, ChatGPT, or Claude for macOS to monitor live model quotas and rate limits.")
                     .font(.system(size: 11.5))
                     .foregroundColor(.white.opacity(0.60))
                     .multilineTextAlignment(.center)

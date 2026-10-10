@@ -208,36 +208,44 @@ public struct ClaudeQuotaCardView: View {
             VStack(spacing: 0) {
                 if account?.canSeeUsageLimits ?? true, let limits = limits {
                     // 1. 5-Hour Limit
-                    quotaRow(
-                        title: "5-Hour Limit",
-                        subtitle: "Rolling burst window",
-                        remainingPercent: limits.fiveHourRemainingPercent,
-                        usedPercent: limits.fiveHourUsedPercent,
-                        resetCountdown: limits.formattedFiveHourCountdown
-                    )
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    
-                    Divider()
-                        .background(Color.white.opacity(0.06))
+                    if limits.hasFiveHourWindow {
+                        quotaRow(
+                            title: "5-Hour Limit",
+                            subtitle: "Rolling burst window",
+                            remainingPercent: limits.fiveHourRemainingPercent,
+                            usedPercent: limits.fiveHourUsedPercent,
+                            resetCountdown: limits.formattedFiveHourCountdown
+                        )
                         .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
                     
                     // 2. Weekly Limit
-                    quotaRow(
-                        title: "Weekly Limit",
-                        subtitle: "All models (Sonnet, Opus & Haiku)",
-                        remainingPercent: limits.weeklyRemainingPercent,
-                        usedPercent: limits.weeklyUsedPercent,
-                        resetCountdown: limits.formattedWeeklyCountdown
-                    )
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
+                    if limits.hasWeeklyWindow {
+                        if limits.hasFiveHourWindow {
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                                .padding(.horizontal, 14)
+                        }
+                        
+                        quotaRow(
+                            title: "Weekly Limit",
+                            subtitle: "All models (Sonnet, Opus & Haiku)",
+                            remainingPercent: limits.weeklyRemainingPercent,
+                            usedPercent: limits.weeklyUsedPercent,
+                            resetCountdown: limits.formattedWeeklyCountdown
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
                     
                     // 3. Optional Model-specific limit (Sonnet)
                     if let sonnet = limits.sonnetRemainingPercent {
-                        Divider()
-                            .background(Color.white.opacity(0.06))
-                            .padding(.horizontal, 14)
+                        if limits.hasFiveHourWindow || limits.hasWeeklyWindow {
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                                .padding(.horizontal, 14)
+                        }
                         
                         quotaRow(
                             title: "Claude 3.7 Sonnet",

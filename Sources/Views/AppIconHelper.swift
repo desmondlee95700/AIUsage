@@ -82,18 +82,29 @@ public enum AppIconHelper {
         return nil
     }()
     
-    public static var dualTemplate: NSImage? = {
-        let size = NSSize(width: 32, height: 14)
-        let img = NSImage(size: size, flipped: false) { rect in
-            if let ag = antigravityTemplate {
-                ag.draw(in: NSRect(x: 0, y: 0, width: 14, height: 14), from: .zero, operation: .sourceOver, fraction: 1.0)
-            }
-            if let cg = chatgptTemplate {
-                cg.draw(in: NSRect(x: 18, y: 0, width: 14, height: 14), from: .zero, operation: .sourceOver, fraction: 1.0)
+    public static func template(for provider: AIProvider) -> NSImage? {
+        switch provider {
+        case .gemini: return antigravityTemplate
+        case .chatgpt: return chatgptTemplate
+        case .claude: return claudeTemplate
+        }
+    }
+    
+    /// Side-by-side template glyphs for the given providers (e.g. the multi-provider menu bar icon).
+    public static func combinedTemplate(for providers: [AIProvider]) -> NSImage? {
+        let icons = providers.compactMap { template(for: $0) }
+        guard !icons.isEmpty else { return nil }
+        let iconSize: CGFloat = 14
+        let spacing: CGFloat = 4
+        let width = CGFloat(icons.count) * iconSize + CGFloat(icons.count - 1) * spacing
+        let img = NSImage(size: NSSize(width: width, height: iconSize), flipped: false) { _ in
+            for (index, icon) in icons.enumerated() {
+                let x = CGFloat(index) * (iconSize + spacing)
+                icon.draw(in: NSRect(x: x, y: 0, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
             }
             return true
         }
         img.isTemplate = true
         return img
-    }()
+    }
 }

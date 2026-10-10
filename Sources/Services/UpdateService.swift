@@ -113,7 +113,11 @@ public final class UpdateService: ObservableObject {
                 let currentVer = AppVersion.current
                 if Self.isVersion(release.tagName, greaterThan: currentVer) {
                     self.availableUpdate = release
-                    self.promptUpdate(release)
+                    // Background checks stay quiet for a version the user chose to skip;
+                    // the header badge and menu item still offer it.
+                    if isUserInitiated || self.skippedVersion != release.tagName {
+                        self.promptUpdate(release, allowSkip: !isUserInitiated)
+                    }
                 } else {
                     self.availableUpdate = nil
                     if isUserInitiated {
@@ -126,7 +130,19 @@ public final class UpdateService: ObservableObject {
     
     // MARK: - Update Presentation Dialog
     
-    public func promptUpdate(_ release: GitHubRelease) {
+    private var skippedVersion: String? {
+        get { UserDefaults.standard.string(forKey: "skippedUpdateVersion") }
+        set { UserDefaults.standard.set(newValue, forKey: "skippedUpdateVersion") }
+    }
+    
+    /// Runs an alert in front of other apps. As a menu bar (accessory) app we aren't
+    /// active by default, so without this the alert can open behind other windows.
+    private func runFrontmost(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal()
+    }
+    
+    public func promptUpdate(_ release: GitHubRelease, allowSkip: Bool = false) {
         let alert = NSAlert()
         alert.messageText = "A New Version of AIUsage is Available!"
         
@@ -145,8 +161,12 @@ public final class UpdateService: ObservableObject {
         alert.addButton(withTitle: "Download & Install")
         alert.addButton(withTitle: "View Release Notes")
         alert.addButton(withTitle: "Later")
+        if allowSkip {
+            alert.addButton(withTitle: "Skip This Version")
+        }
+        let skipResponse = NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertThirdButtonReturn.rawValue + 1)
         
-        let response = alert.runModal()
+        let response = runFrontmost(alert)
         switch response {
         case .alertFirstButtonReturn:
             downloadAndInstallUpdate(release)
@@ -154,6 +174,8 @@ public final class UpdateService: ObservableObject {
             if let url = URL(string: release.htmlUrl) {
                 NSWorkspace.shared.open(url)
             }
+        case skipResponse:
+            skippedVersion = release.tagName
         default:
             break
         }
@@ -210,7 +232,7 @@ public final class UpdateService: ObservableObject {
                         completionAlert.icon = icon
                     }
                     completionAlert.addButton(withTitle: "OK")
-                    completionAlert.runModal()
+                    _ = self.runFrontmost(completionAlert)
                 } catch {
                     self.showErrorAlert(message: "Could not save DMG installer: \(error.localizedDescription)")
                 }
@@ -228,7 +250,7 @@ public final class UpdateService: ObservableObject {
             alert.icon = icon
         }
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        _ = runFrontmost(alert)
     }
     
     private func showErrorAlert(message: String) {
@@ -240,6 +262,6 @@ public final class UpdateService: ObservableObject {
             alert.icon = icon
         }
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        _ = runFrontmost(alert)
     }
 }

@@ -5,25 +5,21 @@ import Combine
 public class QuotaService: ObservableObject {
     public static let shared = QuotaService()
     
-    // Active Provider Selection
-    @Published public var activeProvider: AIProvider {
-        didSet {
-            UserDefaults.standard.set(activeProvider.rawValue, forKey: "activeProvider")
-            updateMenuBarCallback?()
-        }
-    }
-    
     // Installation Status
     @Published public var isGeminiInstalled: Bool = false
     @Published public var isCodexInstalled: Bool = false
     @Published public var isClaudeInstalled: Bool = false
     
+    public var installedProviders: [AIProvider] {
+        var list: [AIProvider] = []
+        if isGeminiInstalled { list.append(.gemini) }
+        if isCodexInstalled { list.append(.chatgpt) }
+        if isClaudeInstalled { list.append(.claude) }
+        return list
+    }
+    
     public var installedProvidersCount: Int {
-        var count = 0
-        if isGeminiInstalled { count += 1 }
-        if isCodexInstalled { count += 1 }
-        if isClaudeInstalled { count += 1 }
-        return count
+        installedProviders.count
     }
     
     // General Status
@@ -49,23 +45,6 @@ public class QuotaService: ObservableObject {
     @Published public var claudeAccount: ClaudeAccountInfo? = nil
     @Published public var claudeLimits: ClaudeUsageLimits? = nil
     @Published public var claudeErrorMessage: String? = nil
-    
-    // Backward compatibility property for isConnected (checks current provider)
-    public var isConnected: Bool {
-        switch activeProvider {
-        case .gemini: return isGeminiConnected
-        case .chatgpt: return isCodexConnected
-        case .claude: return isClaudeConnected
-        }
-    }
-    
-    public var errorMessage: String? {
-        switch activeProvider {
-        case .gemini: return geminiErrorMessage
-        case .chatgpt: return codexErrorMessage
-        case .claude: return claudeErrorMessage
-        }
-    }
     
     // Codex Reset State
     @Published public var isConsumingReset: Bool = false
@@ -147,6 +126,9 @@ public class QuotaService: ObservableObject {
         if isClaudeInstalled { all.insert(.claude) }
         if !all.isEmpty {
             selectedProviders = all
+            if !all.contains(dualActiveProvider), let first = selectedInstalledProviders.first {
+                dualActiveProvider = first
+            }
             refresh()
         }
     }
@@ -171,44 +153,8 @@ public class QuotaService: ObservableObject {
         return list.map { $0.displayName }.joined(separator: " · ")
     }
     
-    // Provider Focus Mode compatibility bridge
-    public var providerFocusMode: ProviderFocusMode {
-        get {
-            if isAllProvidersSelected {
-                return .both
-            }
-            if selectedInstalledProviders.count == 1, let single = selectedInstalledProviders.first {
-                switch single {
-                case .gemini: return .gemini
-                case .chatgpt: return .chatgpt
-                case .claude: return .claude
-                }
-            }
-            return .both
-        }
-        set {
-            switch newValue {
-            case .both: selectAllProviders()
-            case .gemini: selectOnlyProvider(.gemini)
-            case .chatgpt: selectOnlyProvider(.chatgpt)
-            case .claude: selectOnlyProvider(.claude)
-            }
-        }
-    }
-    
     // Active provider within Multi-Provider segmented view
     @Published public var dualActiveProvider: AIProvider = .gemini
-    
-    public func cycleDualActiveProvider() {
-        let activeProviders = selectedInstalledProviders
-        guard !activeProviders.isEmpty else { return }
-        if let index = activeProviders.firstIndex(of: dualActiveProvider) {
-            let nextIndex = (index + 1) % activeProviders.count
-            dualActiveProvider = activeProviders[nextIndex]
-        } else {
-            dualActiveProvider = activeProviders[0]
-        }
-    }
     
     // User preferences
     @Published public var displayMode: MenuBarDisplayMode {
@@ -230,6 +176,9 @@ public class QuotaService: ObservableObject {
     
     private var timer: Timer?
     private let session: URLSession
+    /// A refresh requested while another was in flight; replayed when that one finishes.
+    /// The value is whether any of the dropped requests asked for forced discovery.
+    private var pendingRefreshForceDiscovery: Bool?
     
     public init() {
         let geminiInst = ProcessDiscovery.isAntigravityInstalled
@@ -238,21 +187,7 @@ public class QuotaService: ObservableObject {
         self.isGeminiInstalled = geminiInst
         self.isCodexInstalled = codexInst
         self.isClaudeInstalled = claudeInst
-        
-        let savedProvider = UserDefaults.standard.string(forKey: "activeProvider")
-        var provider = AIProvider(rawValue: savedProvider ?? "") ?? .gemini
-        if provider == .gemini && !geminiInst {
-            if codexInst { provider = .chatgpt }
-            else if claudeInst { provider = .claude }
-        } else if provider == .chatgpt && !codexInst {
-            if geminiInst { provider = .gemini }
-            else if claudeInst { provider = .claude }
-        } else if provider == .claude && !claudeInst {
-            if geminiInst { provider = .gemini }
-            else if codexInst { provider = .chatgpt }
-        }
-        self.activeProvider = provider
-        
+    
         // Multi-choice selected providers initialization
         var initialSelected = Set<AIProvider>()
         if let savedArray = UserDefaults.standard.stringArray(forKey: "selectedProviders"), !savedArray.isEmpty {
@@ -282,7 +217,8 @@ public class QuotaService: ObservableObject {
         }
         self.selectedProviders = initialSelected
         
-        if let first = initialSelected.first {
+        // Sets are unordered; pick in canonical order so the popover opens consistently
+        if let first = AIProvider.allCases.first(where: { initialSelected.contains($0) }) {
             self.dualActiveProvider = first
         }
         
@@ -303,34 +239,17 @@ public class QuotaService: ObservableObject {
         }
         self.displayMode = mode
         
-        let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
-        self.refreshInterval = RefreshInterval(rawValue: savedInterval == 0 ? 60 : savedInterval) ?? .oneMinute
+        // 0 is a real value (.manual), so distinguish "never saved" from "saved as 0"
+        if UserDefaults.standard.object(forKey: "refreshInterval") != nil {
+            let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
+            self.refreshInterval = RefreshInterval(rawValue: savedInterval) ?? .oneMinute
+        } else {
+            self.refreshInterval = .oneMinute
+        }
         
         self.session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
         
         restartTimer()
-    }
-    
-    public func setFocusMode(_ mode: ProviderFocusMode) {
-        self.providerFocusMode = mode
-        switch mode {
-        case .gemini:
-            self.activeProvider = .gemini
-            self.displayMode = .activeProvider
-            self.dualActiveProvider = .gemini
-        case .chatgpt:
-            self.activeProvider = .chatgpt
-            self.displayMode = .activeProvider
-            self.dualActiveProvider = .chatgpt
-        case .claude:
-            self.activeProvider = .claude
-            self.displayMode = .activeProvider
-            self.dualActiveProvider = .claude
-        case .both:
-            self.displayMode = .dual
-        }
-        updateMenuBarCallback?()
-        onFocusModeChanged?()
     }
     
     public func restartTimer() {
@@ -345,18 +264,39 @@ public class QuotaService: ObservableObject {
     }
     
     public func refresh(forceDiscovery: Bool = false) {
-        guard !isLoading else { return }
-        
-        let geminiInst = ProcessDiscovery.isAntigravityInstalled
-        let codexInst = CodexDiscovery.isCodexInstalled
-        let claudeInst = ClaudeDiscovery.isClaudeInstalled
-        
-        DispatchQueue.main.async {
-            self.isLoading = true
-            self.isGeminiInstalled = geminiInst
-            self.isCodexInstalled = codexInst
-            self.isClaudeInstalled = claudeInst
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.refresh(forceDiscovery: forceDiscovery) }
+            return
         }
+        
+        // Don't drop requests that arrive mid-refresh (e.g. a provider was just
+        // enabled): queue one follow-up that runs when the current refresh ends.
+        guard !isLoading else {
+            pendingRefreshForceDiscovery = (pendingRefreshForceDiscovery ?? false) || forceDiscovery
+            return
+        }
+        isLoading = true
+        
+        // Installation checks can spawn `ps` and walk app bundles, so keep them off the main thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let geminiInst = ProcessDiscovery.isAntigravityInstalled
+            let codexInst = CodexDiscovery.isCodexInstalled
+            let claudeInst = ClaudeDiscovery.isClaudeInstalled
+            DispatchQueue.main.async {
+                self?.performRefresh(
+                    forceDiscovery: forceDiscovery,
+                    geminiInst: geminiInst,
+                    codexInst: codexInst,
+                    claudeInst: claudeInst
+                )
+            }
+        }
+    }
+    
+    private func performRefresh(forceDiscovery: Bool, geminiInst: Bool, codexInst: Bool, claudeInst: Bool) {
+        isGeminiInstalled = geminiInst
+        isCodexInstalled = codexInst
+        isClaudeInstalled = claudeInst
         
         let dispatchGroup = DispatchGroup()
         
@@ -367,12 +307,10 @@ public class QuotaService: ObservableObject {
                 dispatchGroup.leave()
             }
         } else {
-            DispatchQueue.main.async {
-                self.isGeminiConnected = false
-                self.discoveredServer = nil
-                if !geminiInst {
-                    self.geminiErrorMessage = "Antigravity is not installed."
-                }
+            isGeminiConnected = false
+            discoveredServer = nil
+            if !geminiInst {
+                geminiErrorMessage = "Antigravity is not installed."
             }
         }
         
@@ -383,11 +321,9 @@ public class QuotaService: ObservableObject {
                 dispatchGroup.leave()
             }
         } else {
-            DispatchQueue.main.async {
-                self.isCodexConnected = false
-                if !codexInst {
-                    self.codexErrorMessage = "ChatGPT / Codex is not installed."
-                }
+            isCodexConnected = false
+            if !codexInst {
+                codexErrorMessage = "ChatGPT / Codex is not installed."
             }
         }
         
@@ -398,11 +334,9 @@ public class QuotaService: ObservableObject {
                 dispatchGroup.leave()
             }
         } else {
-            DispatchQueue.main.async {
-                self.isClaudeConnected = false
-                if !claudeInst {
-                    self.claudeErrorMessage = "Claude is not installed."
-                }
+            isClaudeConnected = false
+            if !claudeInst {
+                claudeErrorMessage = "Claude is not installed."
             }
         }
         
@@ -412,6 +346,11 @@ public class QuotaService: ObservableObject {
             self.lastUpdated = Date()
             self.updateMenuBarCallback?()
             self.checkLowQuotaNotifications()
+            
+            if let pendingForce = self.pendingRefreshForceDiscovery {
+                self.pendingRefreshForceDiscovery = nil
+                self.refresh(forceDiscovery: pendingForce)
+            }
         }
     }
     
@@ -589,6 +528,14 @@ public class QuotaService: ObservableObject {
             }
             
             group.notify(queue: .main) {
+                // The cached server isn't health-checked before use, so a failure may just mean
+                // Antigravity restarted on a new port. Rediscover once before reporting an error.
+                if fetchedQuota == nil && !forceDiscovery {
+                    ProcessDiscovery.invalidateCache()
+                    self.refreshGemini(forceDiscovery: true, completion: completion)
+                    return
+                }
+    
                 if let quota = fetchedQuota {
                     self.isGeminiConnected = true
                     self.discoveredServer = server
@@ -632,8 +579,8 @@ public class QuotaService: ObservableObject {
     // MARK: - Claude / Anthropic Refresh Pipeline
     
     private func refreshClaude(forceRefresh: Bool = false, completion: @escaping () -> Void) {
-        ClaudeService.shared.usagePollInterval = TimeInterval(refreshInterval.rawValue)
-        ClaudeService.shared.fetch(forceRefresh: forceRefresh) { [weak self] result in
+        let pollInterval = TimeInterval(refreshInterval.rawValue)
+        ClaudeService.shared.fetch(forceRefresh: forceRefresh, pollInterval: pollInterval) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else {
                     completion()
@@ -792,14 +739,6 @@ public class QuotaService: ObservableObject {
         (primary5hBucket ?? primaryWeeklyBucket)?.percentage ?? 0
     }
     
-    public var geminiWeeklyPercentage: Int {
-        primaryWeeklyBucket?.percentage ?? 0
-    }
-    
-    public var gemini5hPercentage: Int {
-        primary5hBucket?.percentage ?? geminiPercentage
-    }
-    
     public var codexSnapshot: CodexRateLimitSnapshot? {
         codexRateLimits?.rateLimits
     }
@@ -843,48 +782,39 @@ public class QuotaService: ObservableObject {
         codex5hWindow?.remainingPercent
     }
     
-    public var codexUsedPercentage: Int {
-        codexActiveWindow?.usedPercent ?? 0
-    }
-    
     // MARK: - Claude Helpers
     
+    /// Menu bar percentage for Claude: the 5-hour window when reported, else the weekly one.
     public var claudePercentage: Int? {
-        claudeLimits?.fiveHourRemainingPercent ?? claudeLimits?.weeklyRemainingPercent
+        claude5hPercentage ?? claudeWeeklyPercentage
     }
     
     public var claudeWeeklyPercentage: Int? {
-        claudeLimits?.weeklyRemainingPercent
+        guard let limits = claudeLimits, limits.hasWeeklyWindow else { return nil }
+        return limits.weeklyRemainingPercent
     }
     
     public var claude5hPercentage: Int? {
-        claudeLimits?.fiveHourRemainingPercent
+        guard let limits = claudeLimits, limits.hasFiveHourWindow else { return nil }
+        return limits.fiveHourRemainingPercent
     }
     
     // MARK: - Menu Bar Formatter Helpers
     
-    public var menuBarTitle: String {
-        let providers = selectedInstalledProviders
-        guard !providers.isEmpty else { return " No AI Tools" }
-        
-        if displayMode == .iconOnly { return "" }
-        
-        var parts: [String] = []
-        for p in providers {
-            switch p {
-            case .gemini:
-                parts.append(isGeminiConnected ? "\(geminiPercentage)%" : "Off")
-            case .chatgpt:
-                parts.append(isCodexConnected ? "\(codexRemainingPercentage)%" : "Off")
-            case .claude:
-                if isClaudeConnected {
-                    parts.append(claudePercentage != nil ? "\(claudePercentage!)%" : (claudeAccount?.tierBadge ?? "Free"))
-                } else {
-                    parts.append("Off")
-                }
+    /// Short status for a provider as shown in the menu bar and provider tabs: "42%", "Off", or a tier badge.
+    public func badgeText(for provider: AIProvider) -> String {
+        switch provider {
+        case .gemini:
+            return isGeminiConnected ? "\(geminiPercentage)%" : "Off"
+        case .chatgpt:
+            return isCodexConnected ? "\(codexRemainingPercentage)%" : "Off"
+        case .claude:
+            guard isClaudeConnected else { return "Off" }
+            if let pct = claudePercentage {
+                return "\(pct)%"
             }
+            return claudeAccount?.tierBadge ?? "Free"
         }
-        return " " + parts.joined(separator: " · ")
     }
     
     public var menuBarTooltip: String {
@@ -927,9 +857,16 @@ public class QuotaService: ObservableObject {
             if isClaudeConnected {
                 let tier = claudeAccount?.formattedTier ?? "Connected"
                 if let limits = claudeLimits {
-                    let fiveH = limits.formattedFiveHourCountdown ?? "Full Quota"
-                    let weekly = limits.formattedWeeklyCountdown ?? "Full Quota"
-                    lines.append("• Claude (Anthropic): 5h: \(limits.fiveHourRemainingPercent)% (\(fiveH)) · Weekly: \(limits.weeklyRemainingPercent)% (\(weekly)) (\(tier))")
+                    var parts: [String] = []
+                    if let fiveH = claude5hPercentage {
+                        parts.append("5h: \(fiveH)% (\(limits.formattedFiveHourCountdown ?? "Full Quota"))")
+                    }
+                    if let weekly = claudeWeeklyPercentage {
+                        parts.append("Weekly: \(weekly)% (\(limits.formattedWeeklyCountdown ?? "Full Quota"))")
+                    }
+                    lines.append("• Claude (Anthropic): \(parts.joined(separator: " · ")) (\(tier))")
+                } else if claudeAccount?.canSeeUsageLimits == true {
+                    lines.append("• Claude (Anthropic): Usage unavailable (\(tier))")
                 } else {
                     lines.append("• Claude (Anthropic): Dynamic Free Tier (\(tier))")
                 }
@@ -944,27 +881,5 @@ public class QuotaService: ObservableObject {
             lines.append("Click to switch views or right-click for quick actions")
         }
         return lines.joined(separator: "\n")
-    }
-    
-    public var statusTintColor: NSColor {
-        let activePercentages: [Int] = selectedInstalledProviders.compactMap { provider in
-            switch provider {
-            case .gemini: return isGeminiConnected ? geminiPercentage : nil
-            case .chatgpt: return isCodexConnected ? codexRemainingPercentage : nil
-            case .claude: return isClaudeConnected ? (claudePercentage ?? 100) : nil
-            }
-        }
-        
-        guard let minPct = activePercentages.min() else {
-            return .secondaryLabelColor
-        }
-        
-        if minPct >= 50 {
-            return NSColor(red: 0.13, green: 0.77, blue: 0.36, alpha: 1.0) // Green #22c55e
-        } else if minPct >= 20 {
-            return NSColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 1.0) // Orange #f59e0b
-        } else {
-            return NSColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1.0) // Red #ef4444
-        }
     }
 }
