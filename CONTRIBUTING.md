@@ -12,7 +12,15 @@ To maintain strict stability, clean architecture, and the zero-token-overhead ph
    - The `main` branch is protected. Direct pushes are restricted solely to the repository owner ([@desmondlee95700](https://github.com/desmondlee95700)).
 2. **Pull Request Required**:
    - All improvements, fixes, and features must be submitted via a **Pull Request (PR)** from a fork or topic branch.
-   - Please provide a concise description of your changes and any relevant screenshots for UI modifications.
+   - Please provide a concise description of your changes and any relevant screenshots for UI modifications (the PR template has a checklist).
+3. **PR Titles Follow Conventional Commits**:
+   - Use `type(optional-scope): description`, e.g. `fix(codex): stop app-server reads from blocking` or `feat: add Cursor provider`.
+   - Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `style`, `revert`. The title becomes the changelog entry.
+4. **Automated Checks**:
+   - Every PR runs **Build & Test** (warnings are errors) and **Conventions** (PR title and network policy). Both must pass before merging.
+   - **SwiftLint** findings are shown inline as suggestions and don't block merging.
+5. **Don't Bump Versions**:
+   - Releases are cut separately by the owner; merging a PR never publishes a release.
 
 ---
 

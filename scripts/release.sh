@@ -4,11 +4,14 @@ set -e
 # ==============================================================================
 # AIUsage Release Automation Script
 # ==============================================================================
-# Automates the complete end-to-end release lifecycle for AIUsage:
-# 1. Version & build number bumping across AppVersion.swift & scripts/build_app.sh
-# 2. Release compilation and Universal DMG generation via scripts/build_dmg.sh
-# 3. Git commit, tag creation, and push to origin
-# 4. GitHub Release creation with attached DMG artifacts and changelog notes
+# Cuts an AIUsage release:
+# 1. Runs the test suite
+# 2. Bumps version & build number in AppVersion.swift & scripts/build_app.sh
+# 3. Commits, creates an annotated vX.Y.Z tag, and pushes both to origin
+# 4. The tag push triggers .github/workflows/release.yml, which builds the DMGs
+#    on a clean macOS runner and publishes the GitHub Release
+#
+# Use --local-publish to build and publish from this machine instead (fallback).
 # ==============================================================================
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,6 +20,7 @@ cd "$DIR"
 # Defaults
 DRY_RUN=false
 SKIP_PUSH=false
+LOCAL_PUBLISH=false
 AUTO_CONFIRM=false
 BUMP_TYPE=""
 TARGET_VERSION=""
@@ -30,7 +34,8 @@ show_help() {
     cat << EOF
 Usage: ./scripts/release.sh [OPTIONS] [VERSION]
 
-Automates AIUsage version bumps, DMG compilation, git tagging, and GitHub Release.
+Bumps the AIUsage version, tags it, and pushes. GitHub Actions then builds the
+DMGs and publishes the GitHub Release (see .github/workflows/release.yml).
 
 Arguments:
   VERSION                Target version string (e.g. 2.1.1, v2.1.1)
@@ -41,10 +46,12 @@ Options:
   --major                Bump major version (e.g. 2.1.0 -> 3.0.0)
   -b, --build NUM        Explicit build number (default: auto-incremented by 1)
   -t, --title TITLE      Release title (default: "AIUsage v<VERSION>")
-  -m, --notes NOTES      Release notes markdown body
-  -f, --notes-file FILE  Path to file containing release notes
+  -m, --notes NOTES      Release highlights (Markdown), shown above the generated changelog
+  -f, --notes-file FILE  Path to file containing release highlights
   -d, --dry-run          Preview changes and actions without modifying files or releasing
-  -s, --skip-push        Build DMG and commit/tag locally without pushing to GitHub
+  -s, --skip-push        Commit and tag locally without pushing to GitHub
+  -l, --local-publish    Build DMGs and publish the GitHub Release from this machine
+                         instead of GitHub Actions (fallback if CI is unavailable)
   -y, --yes              Automatic yes to prompts; run non-interactively
   -h, --help             Display this help message
 
@@ -92,6 +99,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--skip-push)
             SKIP_PUSH=true
+            shift
+            ;;
+        -l|--local-publish)
+            LOCAL_PUBLISH=true
             shift
             ;;
         -y|--yes)
@@ -190,8 +201,8 @@ if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
     exit 1
 fi
 
-# Check GitHub CLI authentication if pushing
-if [[ "$SKIP_PUSH" == false ]]; then
+# Check GitHub CLI authentication if publishing locally
+if [[ "$SKIP_PUSH" == false && "$LOCAL_PUBLISH" == true ]]; then
     if ! command -v gh &> /dev/null; then
         echo "❌ GitHub CLI ('gh') is not installed. Please install via 'brew install gh' or use --skip-push."
         exit 1
@@ -208,20 +219,22 @@ if [[ "$DRY_RUN" == true ]]; then
     echo "============================================================"
     echo "🔎 DRY-RUN SIMULATION (No files modified, no releases made)"
     echo "============================================================"
-    echo "1. Files to update:"
+    echo "1. Run swift test"
+    echo "2. Files to update:"
     echo "   - Sources/Models/AppVersion.swift  -> Version ${NEW_VERSION}, Build ${NEW_BUILD}"
     echo "   - scripts/build_app.sh            -> APP_VERSION=\"${NEW_VERSION}\", APP_BUILD=\"${NEW_BUILD}\""
-    echo "2. Build & Package DMG:"
-    echo "   - Run ./scripts/build_dmg.sh"
-    echo "   - Generates AIUsage.dmg and AIUsage-${TAG_NAME}.dmg"
     echo "3. Git Commit & Tag:"
     echo "   - git commit -m \"chore(release): ${TAG_NAME} (build ${NEW_BUILD})\""
-    echo "   - git tag -a \"${TAG_NAME}\" -m \"Release ${TAG_NAME}\""
+    echo "   - git tag -a \"${TAG_NAME}\""
     if [[ "$SKIP_PUSH" == false ]]; then
-        echo "4. Push & GitHub Release:"
+        echo "4. Push:"
         echo "   - git push origin ${CURRENT_BRANCH}"
         echo "   - git push origin ${TAG_NAME}"
-        echo "   - gh release create ${TAG_NAME} AIUsage.dmg AIUsage-${TAG_NAME}.dmg --title \"${RELEASE_TITLE}\""
+        if [[ "$LOCAL_PUBLISH" == true ]]; then
+            echo "5. Build DMGs locally and gh release create ${TAG_NAME}"
+        else
+            echo "5. GitHub Actions (release.yml) builds the DMGs and publishes the release"
+        fi
     fi
     echo "============================================================"
     echo "✅ Dry-run completed successfully."
@@ -239,7 +252,11 @@ if [[ "$AUTO_CONFIRM" == false ]]; then
     fi
 fi
 
-# 1. Update version files
+# 1. Test before touching anything
+echo "🧪 Running test suite..."
+swift test
+
+# 2. Update version files
 echo "📝 Updating version strings to ${NEW_VERSION} (build ${NEW_BUILD})..."
 
 python3 -c "
@@ -272,44 +289,53 @@ with open('scripts/build_app.sh', 'w') as f:
     f.write(content)
 "
 
-# 2. Build DMG
+# 3. Git commit & tag
+echo "📦 Staging and committing release files..."
+git add Sources/Models/AppVersion.swift scripts/build_app.sh
+git commit -m "chore(release): ${TAG_NAME} (build ${NEW_BUILD})"
+
+# The tag annotation carries optional highlights; release_notes.sh puts them above the changelog
+TAG_MESSAGE="Release ${TAG_NAME}"
+if [[ -n "$NOTES_FILE" && -f "$NOTES_FILE" ]]; then
+    TAG_MESSAGE="$(cat "$NOTES_FILE")"
+elif [[ -n "$RELEASE_NOTES" ]]; then
+    TAG_MESSAGE="$RELEASE_NOTES"
+fi
+echo "🏷️ Creating git tag ${TAG_NAME}..."
+git tag -a "${TAG_NAME}" -m "$TAG_MESSAGE"
+
+if [[ "$SKIP_PUSH" == true ]]; then
+    echo "ℹ️ --skip-push enabled: Git commit and tag '${TAG_NAME}' created locally. Remote push skipped."
+    exit 0
+fi
+
+# 4. Push (the tag push triggers the Release workflow unless publishing locally)
+echo "🚀 Pushing branch and tag to GitHub..."
+git push origin "$CURRENT_BRANCH"
+git push origin "$TAG_NAME"
+
+if [[ "$LOCAL_PUBLISH" == false ]]; then
+    echo ""
+    echo "🎉 ${TAG_NAME} tagged and pushed. GitHub Actions is building and publishing the release:"
+    echo "🔗 https://github.com/desmondlee95700/AIUsage/actions/workflows/release.yml"
+    exit 0
+fi
+
+# 5. Local fallback: build and publish from this machine.
+# The Release workflow also runs for this tag but skips once it sees the release exists.
 echo "🔨 Compiling release bundle and building DMG..."
 "$DIR/scripts/build_dmg.sh"
 
-# Verify artifact existence
 if [[ ! -f "$DIR/AIUsage.dmg" || ! -f "$DIR/AIUsage-${TAG_NAME}.dmg" ]]; then
     echo "❌ DMG artifacts missing after build! Check build_dmg.sh output."
     exit 1
 fi
 
-# 3. Git commit & tag
-echo "📦 Staging and committing release files..."
-git add Sources/Models/AppVersion.swift scripts/build_app.sh
-git commit -m "chore(release): ${TAG_NAME} (build ${NEW_BUILD})"
-echo "🏷️ Creating git tag ${TAG_NAME}..."
-git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
-
-# 4. Git push & GitHub Release
-if [[ "$SKIP_PUSH" == false ]]; then
-    echo "🚀 Pushing branch and tag to GitHub..."
-    git push origin "$CURRENT_BRANCH"
-    git push origin "$TAG_NAME"
-
-    echo "🌐 Publishing GitHub Release ${TAG_NAME}..."
-    GH_ARGS=("$TAG_NAME" "AIUsage.dmg" "AIUsage-${TAG_NAME}.dmg" "--title" "$RELEASE_TITLE")
-
-    if [[ -n "$NOTES_FILE" && -f "$NOTES_FILE" ]]; then
-        GH_ARGS+=("--notes-file" "$NOTES_FILE")
-    elif [[ -n "$RELEASE_NOTES" ]]; then
-        GH_ARGS+=("--notes" "$RELEASE_NOTES")
-    else
-        GH_ARGS+=("--generate-notes")
-    fi
-
-    gh release create "${GH_ARGS[@]}"
-    echo ""
-    echo "🎉 Release ${TAG_NAME} successfully published!"
-    echo "🔗 URL: https://github.com/desmondlee95700/AIUsage/releases/tag/${TAG_NAME}"
-else
-    echo "ℹ️ --skip-push enabled: Git commit and tag '${TAG_NAME}' created locally. Remote push skipped."
-fi
+echo "🌐 Publishing GitHub Release ${TAG_NAME}..."
+NOTES_PATH="$(mktemp)"
+"$DIR/scripts/release_notes.sh" "$TAG_NAME" > "$NOTES_PATH"
+gh release create "$TAG_NAME" "AIUsage.dmg" "AIUsage-${TAG_NAME}.dmg" --title "$RELEASE_TITLE" --notes-file "$NOTES_PATH" --verify-tag
+rm -f "$NOTES_PATH"
+echo ""
+echo "🎉 Release ${TAG_NAME} successfully published!"
+echo "🔗 URL: https://github.com/desmondlee95700/AIUsage/releases/tag/${TAG_NAME}"

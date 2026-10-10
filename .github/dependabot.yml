@@ -1,0 +1,11 @@
+# Keeps the GitHub Actions used by CI and Release up to date.
+# (The Swift package has no external dependencies.)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      # Keeps Dependabot PR titles valid for the Conventional Commits check
+      prefix: ci

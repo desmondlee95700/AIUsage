@@ -24,10 +24,18 @@ AIUsage/
 ├── README.md                   # User documentation
 ├── AGENTS.md                   # Canonical agent operational guide
 ├── GEMINI.md -> AGENTS.md      # Symlink for Gemini CLI / Antigravity rule loading
+├── .github/                    # CI/CD (see §6.4)
+│   ├── workflows/ci.yml        # PR & main checks: build, test, conventions, SwiftLint
+│   ├── workflows/release.yml   # Tag-triggered DMG build & GitHub Release publisher
+│   ├── CODEOWNERS              # Owner review on every PR
+│   └── pull_request_template.md
+├── .swiftlint.yml              # Advisory lint rules tuned to house style
 ├── scripts/                    # Build and packaging automation
 │   ├── build_app.sh            # App bundle compiler & packaging script
 │   ├── build_dmg.sh            # Distributable compressed DMG builder
-│   └── release.sh              # Automated release, tagging & GitHub publisher
+│   ├── release.sh              # Version bump, tag & push (CI publishes)
+│   ├── release_notes.sh        # Changelog from Conventional Commits since the previous tag
+│   └── check_network_policy.sh # Enforces the §6.3 network allowlist
 ├── Assets/                     # Application icons and branding assets
 │   ├── AppIcon.icns            # Multi-scale Apple ICNS icon
 │   └── AppIcon.png             # Master 1024x1024 icon
@@ -109,11 +117,15 @@ Execute commands directly from the repository root:
   ```bash
   ./scripts/build_dmg.sh
   ```
-- **Automate Release, Tag & Publish (via aiusage-release)**:
+- **Cut a Release (owner only, via aiusage-release)**: bumps, tags and pushes; GitHub Actions builds and publishes:
   ```bash
   ./scripts/release.sh --patch
   # Or preview with dry-run:
   ./scripts/release.sh --dry-run --patch
+  ```
+- **Check Network Policy** (also runs in CI):
+  ```bash
+  ./scripts/check_network_policy.sh
   ```
 - **Launch Application**:
   ```bash
@@ -136,7 +148,9 @@ To maintain codebase stability, security, and strict quality control:
    - Direct push, release tagging, and branch management privileges are strictly reserved for the repository owner (`desmondlee95700` / `dessy`).
 2. **Pull Request (PR) Workflow**:
    - All community and external contributions must be submitted via a dedicated feature branch or fork through a **GitHub Pull Request**.
-   - PRs must pass `swift build` and `swift test`, and follow the macOS 27 Liquid Glass design specifications.
+   - PRs must pass the required CI checks (§6.4) and follow the macOS 27 Liquid Glass design specifications.
+   - PR titles must follow [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix(scope):`, `docs:` …); they become changelog entries.
+   - PRs must not bump version numbers. Releases are cut separately by the owner.
 3. **Zero Token Overhead Policy**:
    - Any PR introducing LLM inference/completion calls, telemetry or analytics, or third-party quota proxies will be rejected.
    - The complete list of allowed data sources is:
@@ -144,6 +158,14 @@ To maintain codebase stability, security, and strict quality control:
      - **ChatGPT**: the bundled Codex CLI `app-server` subprocess.
      - **Claude**: read-only usage endpoints on `claude.ai` (using the Claude desktop session cookie) and `api.anthropic.com/api/oauth/usage` (using the Claude Code OAuth token).
      - **Updates**: the GitHub Releases API for this repository.
+     - **Browser links** (opened in the user's browser, no data requests): `claude.ai`, `chatgpt.com`.
    - Credentials are read from the local Keychain or cookie store at request time. They are never persisted, logged, or sent anywhere other than the provider's own HTTPS endpoint.
-   - Adding a new network destination requires explicit approval from the repository owner.
+   - Adding a new network destination requires explicit approval from the repository owner. `scripts/check_network_policy.sh` enforces the allowlist in CI.
+4. **CI/CD Pipeline**:
+   - **`CI` workflow** (every PR and push to `main`):
+     - *Build & Test* (required): `swift build` with warnings as errors, `swift test`, and app bundle packaging.
+     - *Conventions* (required): network policy check and Conventional Commits PR title check.
+     - *SwiftLint* (advisory): annotates style findings inline; never blocks merging.
+   - **`Release` workflow**: runs only when a `vX.Y.Z` tag is pushed. It verifies the tag is on `main` and matches the version in source, runs the tests, builds both DMGs, generates release notes, and publishes the GitHub Release. Tags with a suffix (`v2.2.0-beta.1`) are published as pre-releases.
+   - Merging a PR never triggers a release.
 
