@@ -12,6 +12,21 @@ final class VersionComparisonTests: XCTestCase {
         XCTAssertFalse(UpdateService.isVersion("2.0.9", greaterThan: "2.1.0"))
         XCTAssertFalse(UpdateService.isVersion(" V2.1.2\n", greaterThan: "2.1.2"))
     }
+
+    func testPrereleaseOrdering() {
+        // A release outranks its own pre-releases...
+        XCTAssertTrue(UpdateService.isVersion("v2.1.3", greaterThan: "2.1.3-rc.1"))
+        XCTAssertFalse(UpdateService.isVersion("v2.1.3-rc.1", greaterThan: "2.1.3"))
+        // ...but a pre-release still outranks the previous release, so rc testers aren't offered a downgrade
+        XCTAssertTrue(UpdateService.isVersion("2.1.3-rc.1", greaterThan: "2.1.2"))
+        XCTAssertFalse(UpdateService.isVersion("v2.1.2", greaterThan: "2.1.3-rc.1"))
+        // Pre-release identifiers follow semver precedence
+        XCTAssertTrue(UpdateService.isVersion("2.1.3-rc.2", greaterThan: "2.1.3-rc.1"))
+        XCTAssertTrue(UpdateService.isVersion("2.1.3-rc.10", greaterThan: "2.1.3-rc.9"))
+        XCTAssertTrue(UpdateService.isVersion("2.1.3-rc.1", greaterThan: "2.1.3-beta.5"))
+        XCTAssertTrue(UpdateService.isVersion("2.1.3-rc.1", greaterThan: "2.1.3-rc"))
+        XCTAssertFalse(UpdateService.isVersion("2.1.3-rc.1", greaterThan: "2.1.3-rc.1"))
+    }
 }
 
 final class QuotaBucketTests: XCTestCase {
