@@ -18,10 +18,11 @@ To maintain strict stability, clean architecture, and the zero-token-overhead ph
 
 ## 📐 Development Guidelines
 
-- **Zero Token Overhead**: Never introduce external cloud LLM network calls, third-party proxies, or token-consuming telemetry. All communications must remain strictly on local loopback Connect-RPC (`127.0.0.1`) or local CLI subprocesses.
+- **Zero Token Overhead**: Never introduce LLM inference calls, third-party proxies, or telemetry. Quota data may only come from the sources listed in `AGENTS.md` §6.3: local loopback Connect-RPC (`127.0.0.1`), the bundled Codex CLI subprocess, and Claude's own read-only usage endpoints. New network destinations need owner approval.
 - **macOS 27 Liquid Glass UI**: All SwiftUI components, cards, popovers, and status gauges must adhere to the macOS 27 Liquid Glass design system specifications in `.agents/skills/liquid-glass-macos27/`.
-- **Clean Compilation**: Ensure the project compiles cleanly with zero warnings or errors prior to opening a PR:
+- **Clean Compilation & Tests**: Ensure the project compiles cleanly with zero warnings or errors, and all tests pass, prior to opening a PR:
   ```bash
   swift build
+  swift test
   ./scripts/build_app.sh
   ```

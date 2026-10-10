@@ -33,7 +33,7 @@ public class CodexService {
 
     /// Splits complete newline-terminated lines off the front of `buffer`, leaving any partial line.
     /// Works on raw bytes so a read that ends inside a multi-byte UTF-8 character can't drop output.
-    private static func takeLines(from buffer: inout Data) -> [Data] {
+    static func takeLines(from buffer: inout Data) -> [Data] {
         var lines: [Data] = []
         while let newline = buffer.firstIndex(of: 0x0A) {
             lines.append(Data(buffer[buffer.startIndex..<newline]))

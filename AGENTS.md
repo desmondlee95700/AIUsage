@@ -10,8 +10,8 @@ Welcome to the **AIUsage** codebase. This document outlines architectural standa
 
 **AIUsage** is a native macOS menu bar application designed for instant, real-time tracking of AI model quotas, subscription tiers, and credit balances.
 
-- **Zero Token Overhead**: Communicates solely via high-speed local loopback Connect-RPC (`127.0.0.1`) with the local Antigravity server and IDE. **Never introduce external LLM network calls or token-consuming telemetry.**
-- **Native macOS Experience**: Implemented entirely in Swift and SwiftUI, targeting macOS 14+ with full forward-compatibility for macOS 27 design standards.
+- **Zero Token Overhead**: Reads quota data without consuming tokens: local loopback Connect-RPC (`127.0.0.1`) for Antigravity, the bundled Codex CLI subprocess for ChatGPT, and the provider's own read-only usage endpoints for Claude (see §6.3 for the full list of allowed network calls). **Never introduce LLM inference calls or telemetry.**
+- **Native macOS Experience**: Implemented entirely in Swift and SwiftUI, targeting macOS 13+ (the `Package.swift` and Info.plist deployment target) with full forward-compatibility for macOS 27 design standards.
 - **Minimal Footprint**: Operates with near-zero idle CPU and memory utilization.
 
 ---
@@ -20,7 +20,7 @@ Welcome to the **AIUsage** codebase. This document outlines architectural standa
 
 ```
 AIUsage/
-├── Package.swift               # SPM manifest (Swift 5.9+, macOS v14+)
+├── Package.swift               # SPM manifest (Swift 5.9+, macOS v13+)
 ├── README.md                   # User documentation
 ├── AGENTS.md                   # Canonical agent operational guide
 ├── GEMINI.md -> AGENTS.md      # Symlink for Gemini CLI / Antigravity rule loading
@@ -34,19 +34,24 @@ AIUsage/
 ├── .agents/skills/             # Workspace-level skills
 │   ├── liquid-glass-macos27/   # macOS 27 Liquid Glass UI design skill
 │   └── aiusage-release/        # Automated release & DMG publishing skill
-└── Sources/
-    ├── main.swift              # AppKit lifecycle entry point & NSApplicationDelegate
-    ├── MenuBar/                # Status item management & menu bar glyph rendering
-    ├── Models/                 # Quota models, bucket structures, user tier definitions
-    ├── Services/               # Connect-RPC loopback client & Antigravity auto-discovery
-    └── Views/                  # SwiftUI components:
-        ├── MainUsageView.swift         # Root popover view & header chrome
-        ├── QuotaCardView.swift         # Quota group cards & bucket progress rows
-        ├── CircularProgressView.swift  # Dynamic circular quota progress gauges
-        ├── PlanCardView.swift          # User tier badge & subscription management
-        ├── CreditsCardView.swift       # Prompt & flow credit indicators
-        ├── LiquidGlass.swift           # macOS 27 Liquid Glass design system helpers
-        └── AppIconHelper.swift         # Dynamic app icon loader & cache
+├── Sources/
+│   ├── main.swift              # AppKit lifecycle entry point & NSApplicationDelegate
+│   ├── MenuBar/                # Status item management & menu bar glyph rendering
+│   ├── Models/                 # Quota models, bucket structures, user tiers, low-quota alert thresholds
+│   ├── Services/               # Provider clients & discovery (Antigravity loopback RPC, Codex CLI, Claude usage), updates, notifications
+│   └── Views/                  # SwiftUI components:
+│       ├── MainUsageView.swift             # Root popover view & header chrome
+│       ├── QuotaCardView.swift             # Antigravity quota group cards & bucket progress rows
+│       ├── ChatGPTQuotaCardView.swift      # ChatGPT plan, rate-limit windows & reset credits
+│       ├── ClaudeQuotaCardView.swift       # Claude plan & 5-hour / weekly limits
+│       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
+│       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
+│       ├── PlanCardView.swift              # User tier badge & subscription management
+│       ├── CreditsCardView.swift           # Prompt & flow credit indicators
+│       ├── LiquidGlass.swift               # macOS 27 Liquid Glass design system helpers
+│       └── AppIconHelper.swift             # Dynamic app icon loader & cache
+└── Tests/
+    └── AIUsageTests/           # XCTest unit tests for pure logic (`swift test`)
 ```
 
 ---
@@ -92,6 +97,10 @@ Execute commands directly from the repository root:
   ```bash
   swift build
   ```
+- **Run Unit Tests** (`Tests/AIUsageTests`, XCTest; covers parsing, quota alerts, window classification, version comparison):
+  ```bash
+  swift test
+  ```
 - **Build & Package macOS App Bundle**:
   ```bash
   ./scripts/build_app.sh
@@ -127,7 +136,14 @@ To maintain codebase stability, security, and strict quality control:
    - Direct push, release tagging, and branch management privileges are strictly reserved for the repository owner (`desmondlee95700` / `dessy`).
 2. **Pull Request (PR) Workflow**:
    - All community and external contributions must be submitted via a dedicated feature branch or fork through a **GitHub Pull Request**.
-   - PRs must pass automated build checks (`swift build`) and follow the macOS 27 Liquid Glass design specifications.
+   - PRs must pass `swift build` and `swift test`, and follow the macOS 27 Liquid Glass design specifications.
 3. **Zero Token Overhead Policy**:
-   - Any PR introducing external cloud LLM API calls, token-consuming telemetry, or third-party quota proxies will be rejected. All communications must remain strictly local via loopback Connect-RPC or bundled CLI subprocesses.
+   - Any PR introducing LLM inference/completion calls, telemetry or analytics, or third-party quota proxies will be rejected.
+   - The complete list of allowed data sources is:
+     - **Antigravity**: local loopback Connect-RPC (`127.0.0.1`).
+     - **ChatGPT**: the bundled Codex CLI `app-server` subprocess.
+     - **Claude**: read-only usage endpoints on `claude.ai` (using the Claude desktop session cookie) and `api.anthropic.com/api/oauth/usage` (using the Claude Code OAuth token).
+     - **Updates**: the GitHub Releases API for this repository.
+   - Credentials are read from the local Keychain or cookie store at request time. They are never persisted, logged, or sent anywhere other than the provider's own HTTPS endpoint.
+   - Adding a new network destination requires explicit approval from the repository owner.
 

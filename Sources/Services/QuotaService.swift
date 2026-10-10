@@ -52,9 +52,7 @@ public class QuotaService: ObservableObject {
     @Published public var resetActionIsSuccess: Bool = false
     
     // Low Quota Alert Tracking (tracks 30% and 10% thresholds per provider upon active quota drop)
-    private var alertedThresholds: [String: Set<Int>] = [:]
-    private var lastKnownQuotaPercentages: [String: Int] = [:]
-    private var hasInitializedQuotaBaselines: Bool = false
+    private var alertTracker = QuotaAlertTracker()
     
     // MARK: - Selected Providers (Multi-Choice Provider Focus)
     @Published public var selectedProviders: Set<AIProvider> {
@@ -406,79 +404,17 @@ public class QuotaService: ObservableObject {
         }
         
         // Mark baselines as initialized so subsequent refreshes only alert upon active quota drop
-        hasInitializedQuotaBaselines = true
+        alertTracker.finishBaseline()
     }
     
     private func evaluateQuotaAlert(provider: String, windowName: String? = nil, keySuffix: String = "", remainingPercent: Int) {
-        guard remainingPercent >= 0 else { return }
-        
         let alertKey = keySuffix.isEmpty ? provider : "\(provider)-\(keySuffix)"
-        let previousPercent = lastKnownQuotaPercentages[alertKey]
-        
-        // 1. Initial baseline establishment on startup:
-        // Record current levels silently. If a tool already has low quota on launch, mark it as acknowledged
-        // so an idle tool with stale low quota NEVER fires a notification out of the blue.
-        if !hasInitializedQuotaBaselines {
-            lastKnownQuotaPercentages[alertKey] = remainingPercent
-            var initialFired: Set<Int> = []
-            if remainingPercent <= 10 {
-                initialFired.insert(10)
-                initialFired.insert(30)
-            } else if remainingPercent <= 30 {
-                initialFired.insert(30)
-            }
-            if !initialFired.isEmpty {
-                alertedThresholds[alertKey] = initialFired
-            }
-            return
-        }
-        
-        // 2. Always record current percentage
-        lastKnownQuotaPercentages[alertKey] = remainingPercent
-        
-        // 3. REQUIRE ACTIVE DROP:
-        // A low quota alert MUST only trigger when quota ACTUALLY DECREASES (active usage occurred)!
-        // If remainingPercent >= prev, the tool is idle (no usage occurred) or has reset/recovered.
-        guard let prev = previousPercent, remainingPercent < prev else {
-            // Quota has recovered or reset (> 30%)
-            if remainingPercent > 30 {
-                alertedThresholds[alertKey] = []
-            }
-            return
-        }
-        
-        var fired = alertedThresholds[alertKey] ?? []
-        
-        // Threshold 1: <= 10% (Critical warning)
-        if remainingPercent <= 10 {
-            if !fired.contains(10) {
-                NotificationManager.shared.sendLowQuotaNotification(
-                    provider: provider,
-                    remainingQuota: "\(remainingPercent)%",
-                    window: windowName
-                )
-                fired.insert(10)
-                fired.insert(30) // Mark 30% as also triggered if it dropped rapidly
-                alertedThresholds[alertKey] = fired
-            }
-        }
-        // Threshold 2: <= 30% (Early warning)
-        else if remainingPercent <= 30 {
-            if !fired.contains(30) {
-                NotificationManager.shared.sendLowQuotaNotification(
-                    provider: provider,
-                    remainingQuota: "\(remainingPercent)%",
-                    window: windowName
-                )
-                fired.insert(30)
-                alertedThresholds[alertKey] = fired
-            }
-            // If quota is between 11% and 30%, rearm 10% in case it drops further
-            if fired.contains(10) {
-                fired.remove(10)
-                alertedThresholds[alertKey] = fired
-            }
-        }
+        guard alertTracker.shouldAlert(key: alertKey, remainingPercent: remainingPercent) else { return }
+        NotificationManager.shared.sendLowQuotaNotification(
+            provider: provider,
+            remainingQuota: "\(remainingPercent)%",
+            window: windowName
+        )
     }
     
     // MARK: - Gemini Refresh Pipeline
