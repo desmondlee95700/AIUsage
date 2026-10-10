@@ -15,7 +15,22 @@ public class CodexService {
     }
     
     public init() {}
-    
+
+    /// Terminates `process` if it is still running after `timeout`, escalating
+    /// to SIGKILL a second later in case SIGTERM is ignored. Ending the child
+    /// closes its stdout, which unblocks any pending `availableData` read.
+    private static func scheduleKill(of process: Process, after timeout: TimeInterval) {
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+            guard process.isRunning else { return }
+            process.terminate()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0) {
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
+            }
+        }
+    }
+
     public func fetch(completion: @escaping (Result<CodexPayload, Error>) -> Void) {
         guard let binaryPath = CodexDiscovery.findCodexBinary() else {
             completion(.failure(NSError(domain: "CodexService", code: 404, userInfo: [
@@ -31,19 +46,25 @@ public class CodexService {
             
             let stdinPipe = Pipe()
             let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            
+
             process.standardInput = stdinPipe
             process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-            
+            process.standardError = FileHandle.nullDevice
+
             do {
                 try process.run()
             } catch {
                 completion(.failure(error))
                 return
             }
-            
+
+            // `availableData` blocks until the child writes or exits, so the
+            // deadline below is only checked between reads. Kill the child at
+            // the deadline so a stalled response can't wedge this thread (and
+            // QuotaService.isLoading with it) forever.
+            let timeout: TimeInterval = 5.0
+            Self.scheduleKill(of: process, after: timeout)
+
             // Prepare JSON-RPC payload requests
             let initMsg = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"AIUsage\",\"version\":\"1.0\"}}}\n"
             let rateLimitsMsg = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"account/rateLimits/read\",\"params\":{\"excludeResetCreditDetails\":false}}\n"
@@ -59,44 +80,59 @@ public class CodexService {
             var fetchedAccount: CodexAccountInfo?
             var fetchedUsage: CodexUsageSummary?
             
+            // Ids of responses that arrived, whether or not they decoded, so a
+            // payload we can't parse never leaves us waiting for more output.
+            var answered = Set<Int>()
             var buffer = ""
             let handle = stdoutPipe.fileHandleForReading
-            let deadline = Date().addingTimeInterval(5.0)
-            
+            let deadline = Date().addingTimeInterval(timeout)
+
             while Date() < deadline {
                 // If we got all 3 responses, we can stop reading
-                if fetchedRateLimits != nil && fetchedAccount != nil && fetchedUsage != nil {
+                if answered.count == 3 {
                     break
                 }
-                
+
+                // Empty data means EOF: the child exited or was terminated above
                 let chunk = handle.availableData
                 if chunk.isEmpty {
-                    Thread.sleep(forTimeInterval: 0.05)
-                    continue
+                    break
                 }
-                
+
                 if let str = String(data: chunk, encoding: .utf8) {
                     buffer += str
                     var lines = buffer.components(separatedBy: "\n")
                     buffer = lines.removeLast() // Keep trailing partial line
-                    
+
                     for line in lines {
                         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { continue }
-                        
+
+                        // Notifications carry no id and server requests carry a
+                        // method, so neither matches one of our responses
+                        guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                              json["method"] == nil,
+                              let id = json["id"] as? Int else { continue }
+
                         // Check which response it is
-                        if trimmed.contains("\"id\":2") {
+                        switch id {
+                        case 2:
+                            answered.insert(id)
                             if let resp = try? JSONDecoder().decode(RPCResponse<CodexRateLimitsResponse>.self, from: lineData) {
                                 fetchedRateLimits = resp.result
                             }
-                        } else if trimmed.contains("\"id\":3") {
+                        case 3:
+                            answered.insert(id)
                             if let resp = try? JSONDecoder().decode(RPCResponse<CodexAccountResponse>.self, from: lineData) {
                                 fetchedAccount = resp.result?.account
                             }
-                        } else if trimmed.contains("\"id\":4") {
+                        case 4:
+                            answered.insert(id)
                             if let resp = try? JSONDecoder().decode(RPCResponse<CodexUsageResponse>.self, from: lineData) {
                                 fetchedUsage = resp.result?.summary
                             }
+                        default:
+                            break
                         }
                     }
                 }
@@ -165,19 +201,22 @@ public class CodexService {
             
             let stdinPipe = Pipe()
             let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            
+
             process.standardInput = stdinPipe
             process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-            
+            process.standardError = FileHandle.nullDevice
+
             do {
                 try process.run()
             } catch {
                 completion(.failure(error))
                 return
             }
-            
+
+            // Same blocking-read guard as fetch()
+            let timeout: TimeInterval = 6.0
+            Self.scheduleKill(of: process, after: timeout)
+
             let initMsg = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"AIUsage\",\"version\":\"1.0\"}}}\n"
             let idempotencyKey = UUID().uuidString.lowercased()
             let consumeMsg = "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"account/rateLimitResetCredit/consume\",\"params\":{\"idempotencyKey\":\"\(idempotencyKey)\"}}\n"
@@ -192,15 +231,15 @@ public class CodexService {
             
             var buffer = ""
             let handle = stdoutPipe.fileHandleForReading
-            let deadline = Date().addingTimeInterval(6.0)
-            
+            let deadline = Date().addingTimeInterval(timeout)
+
             while Date() < deadline && outcome == nil && serverError == nil {
+                // Empty data means EOF: the child exited or was terminated above
                 let chunk = handle.availableData
                 if chunk.isEmpty {
-                    Thread.sleep(forTimeInterval: 0.05)
-                    continue
+                    break
                 }
-                
+
                 if let str = String(data: chunk, encoding: .utf8) {
                     buffer += str
                     var lines = buffer.components(separatedBy: "\n")
@@ -210,14 +249,14 @@ public class CodexService {
                         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { continue }
                         
-                        if trimmed.contains("\"id\":5") {
-                            if let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] {
-                                if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
-                                    serverError = msg
-                                } else if let res = json["result"] as? [String: Any], let rawOutcome = res["outcome"] as? String {
-                                    outcome = ConsumeResetCreditOutcome(rawValue: rawOutcome) ?? .unknown
-                                }
-                            }
+                        guard let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                              json["method"] == nil,
+                              json["id"] as? Int == 5 else { continue }
+
+                        if let err = json["error"] as? [String: Any], let msg = err["message"] as? String {
+                            serverError = msg
+                        } else if let res = json["result"] as? [String: Any], let rawOutcome = res["outcome"] as? String {
+                            outcome = ConsumeResetCreditOutcome(rawValue: rawOutcome) ?? .unknown
                         }
                     }
                 }
