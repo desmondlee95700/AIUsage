@@ -2,6 +2,24 @@ import XCTest
 @testable import AIUsage
 
 final class VersionComparisonTests: XCTestCase {
+    func testPlainTextReleaseNotes() {
+        let body = """
+        ## 🐛 Fixes
+
+        - **release:** handle pre-release versions in updater and release script
+        - refresh, notification, parsing and threading bugs; remove dead code
+
+
+        **Full changelog:** https://github.com/desmondlee95700/AIUsage/compare/v2.1.2...v2.1.3
+        """
+        XCTAssertEqual(
+            UpdateService.plainTextReleaseNotes(body),
+            "🐛 Fixes\n\n• release: handle pre-release versions in updater and release script\n• refresh, notification, parsing and threading bugs; remove dead code"
+        )
+        let truncated = UpdateService.plainTextReleaseNotes("- one\n- two\n- three", maxLength: 12)
+        XCTAssertEqual(truncated, "• one\n• two\n…")
+    }
+
     func testIsVersionGreaterThan() {
         XCTAssertTrue(UpdateService.isVersion("v2.1.3", greaterThan: "2.1.2"))
         XCTAssertTrue(UpdateService.isVersion("2.10.0", greaterThan: "2.9.9"))

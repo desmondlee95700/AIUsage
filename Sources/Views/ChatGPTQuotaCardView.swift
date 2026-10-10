@@ -43,6 +43,14 @@ public struct ChatGPTQuotaCardView: View {
             if let usage = usage {
                 usageStatsSection(usage: usage)
             }
+            
+            if let activity = service.codexActivity {
+                TokenActivityCardView(
+                    title: "Codex CLI Activity",
+                    activity: activity,
+                    tint: Color(red: 0.38, green: 0.65, blue: 1.0)
+                )
+            }
         }
         .alert(isPresented: $showingConfirmAlert) {
             Alert(
