@@ -12,7 +12,13 @@ REPO_URL="https://github.com/desmondlee95700/AIUsage"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
-PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)
+# A final release is compared against the previous final release, skipping its own
+# pre-releases, so users upgrading from the last stable version see every change.
+if [[ "$TAG" == *-* ]]; then
+    PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)
+else
+    PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "${TAG}^" 2>/dev/null || true)
+fi
 RANGE="${PREV_TAG:+${PREV_TAG}..}${TAG}"
 
 # Regexes live in variables: bash 3.2 (macOS default) can't parse them inline
