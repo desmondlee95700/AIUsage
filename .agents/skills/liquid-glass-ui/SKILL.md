@@ -1,5 +1,5 @@
 ---
-name: liquid-glass-macos27
+name: liquid-glass-ui
 description: Design and implement Apple's next-generation Liquid Glass UI interfaces (WWDC 2025+, macOS Tahoe 26+, iOS 26+) using SwiftUI. Use this skill whenever building or styling macOS interfaces, menu bar popovers, Control Center style widgets, HUDs, or cards requiring translucent materials, specular refraction highlights, dynamic optical blur, chromatic dispersion, ambient tint bleed, glass buttons (.buttonStyle(.glass), .glassProminent), or visionOS/macOS glassmorphic aesthetics.
 license: MIT
 ---
@@ -26,7 +26,7 @@ Every Liquid Glass surface adheres to five foundational laws:
    - `.regular`: Standard UI (cards, popovers, toolbars, navigation bars) with medium optical blur.
    - `.clear`: High transparency for media-rich backgrounds.
    - `.tint(color)`: Color-tinted glass (e.g. celestial blue for Gemini, emerald/mint for ChatGPT) where color bleeds dynamically through the refractive layer.
-   - `.prominent`: High-contrast prominent glass (e.g. active toggles in macOS Control Center with high-contrast glyphs).
+   - Prominent: High-contrast accent-filled glass for primary actions (e.g. active toggles in macOS Control Center with high-contrast glyphs). Natively this is the `.glassProminent` button style, not a `Glass` variant; the native `Glass` type only offers `.regular`, `.clear` and `.identity`, plus `.tint(_:)` and `.interactive()`.
 
 4. **Fluid Spring Mechanics**:
    Physical elements must behave like polished lenses immersed in viscous fluid. Avoid linear or standard easeInOut transitions. Use interactive spring curves with controlled damping (e.g., `response: 0.32, dampingFraction: 0.72`).
@@ -70,10 +70,10 @@ RoundedRectangle(cornerRadius: 16, style: .continuous)
 ```
 
 ### B. Glass Buttons (.glass & .glassProminent)
-As seen in macOS Control Center toggles:
+As seen in macOS Control Center toggles. These are hand-built equivalents that work on macOS 13+; the native `.buttonStyle(.glass)` / `.glassProminent` exist only on macOS 26+ (see Section 4).
 
 ```swift
-// Standard Glass Button (.buttonStyle(.glass))
+// Standard Glass Button (look-alike of .buttonStyle(.glass))
 Capsule(style: .continuous)
     .fill(.regularMaterial)
     .overlay(
@@ -84,7 +84,7 @@ Capsule(style: .continuous)
             )
     )
 
-// Prominent Glass Button (.buttonStyle(.glassProminent))
+// Prominent Glass Button (look-alike of .buttonStyle(.glassProminent))
 Capsule(style: .continuous)
     .fill(
         LinearGradient(
@@ -153,3 +153,20 @@ ZStack {
 - **Always Provide Specular Rim Gradients**: Flat 1px white strokes look harsh. Multi-stop gradients fading downward create authentic refraction.
 - **Maintain High Contrast**: Always ensure text over glass passes WCAG AA contrast (minimum 4.5:1).
 - **Graceful Reduced-Transparency**: When `accessibilityReduceTransparency` is enabled, replace materials with opaque semantic colors (`NSColor.controlBackgroundColor`).
+
+---
+
+## 4. Native Liquid Glass APIs (macOS 26+)
+
+AIUsage deploys to macOS 13, so everything above is built from materials, gradients and `LiquidGlassTokens`, and it stays the default path. Apple's native APIs (`.glassEffect()`, `GlassEffectContainer`, `glassEffectID`, `.buttonStyle(.glass)` / `.glassProminent`, scroll edge effects) are available only on macOS 26 and later.
+
+Rules for using them:
+
+- **House rules win.** Where the Apple guides disagree with Sections 1–3 (custom backgrounds, fixed opacities, hand-drawn rims), follow this file.
+- **Always gate.** Use the native APIs only inside `if #available(macOS 26, *)`, with the existing material-based view as the `else` branch. Never raise the deployment target to adopt them.
+- **Keep the tokens.** Native glass views still use `LiquidGlassTokens` springs and keep the Reduce Transparency fallback.
+
+References (adapted from [CharlesWiltgen/Axiom](https://github.com/CharlesWiltgen/axiom), MIT):
+
+- `references/apple-liquid-glass.md`: what Liquid Glass is, Regular vs Clear variants, tinting and legibility, known OS bugs with no fix, and an expert review checklist.
+- `references/apple-liquid-glass-ref.md`: app-wide adoption reference (controls, toolbars, menus, windows, `NSVisualEffectView` / blur migration mapping). Large parts are iOS/iPadOS-specific; skip tab bar, iPad and UIKit sections for this app.
