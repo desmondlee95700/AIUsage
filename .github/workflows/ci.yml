@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Toolchain
         run: swift --version
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Network policy (AGENTS.md §6.3)
         run: ./scripts/check_network_policy.sh
@@ -64,7 +64,7 @@ jobs:
     # Style findings are reported inline on the PR but never block merging
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install SwiftLint
         run: command -v swiftlint || brew install swiftlint
