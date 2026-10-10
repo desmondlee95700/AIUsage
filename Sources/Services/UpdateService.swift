@@ -58,21 +58,48 @@ public final class UpdateService: ObservableObject {
     
     // MARK: - Version Comparison
     
+    /// Semantic version comparison, including pre-release suffixes (`2.1.3-rc.1 < 2.1.3`).
     public static func isVersion(_ v1: String, greaterThan v2: String) -> Bool {
-        let clean1 = v1.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
-        let clean2 = v2.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
-        
-        let parts1 = clean1.split(separator: ".").compactMap { Int($0) }
-        let parts2 = clean2.split(separator: ".").compactMap { Int($0) }
-        
-        let maxCount = max(parts1.count, parts2.count)
+        let (core1, pre1) = splitVersion(v1)
+        let (core2, pre2) = splitVersion(v2)
+
+        let maxCount = max(core1.count, core2.count)
         for i in 0..<maxCount {
-            let p1 = i < parts1.count ? parts1[i] : 0
-            let p2 = i < parts2.count ? parts2[i] : 0
+            let p1 = i < core1.count ? core1[i] : 0
+            let p2 = i < core2.count ? core2[i] : 0
             if p1 > p2 { return true }
             if p1 < p2 { return false }
         }
-        return false
+
+        // Same core version: a release outranks any of its pre-releases
+        switch (pre1, pre2) {
+        case (nil, nil), (nil, _?): return pre2 != nil
+        case (_?, nil): return false
+        case let (a?, b?): return isPrerelease(a, greaterThan: b)
+        }
+    }
+
+    /// Splits "v2.1.3-rc.1" into numeric core [2, 1, 3] and pre-release identifiers ["rc", "1"].
+    private static func splitVersion(_ version: String) -> (core: [Int], prerelease: [String]?) {
+        let clean = version.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
+        let pieces = clean.split(separator: "-", maxSplits: 1)
+        let core = (pieces.first ?? "").split(separator: ".").compactMap { Int($0) }
+        let prerelease = pieces.count > 1 ? pieces[1].split(separator: ".").map(String.init) : nil
+        return (core, prerelease)
+    }
+
+    /// Semver precedence for pre-release identifiers: numeric compare numerically and rank
+    /// below alphanumeric ones; a shorter list ranks lower when all shared identifiers match.
+    private static func isPrerelease(_ a: [String], greaterThan b: [String]) -> Bool {
+        for (x, y) in zip(a, b) where x != y {
+            switch (Int(x), Int(y)) {
+            case let (nx?, ny?): return nx > ny
+            case (nil, _?): return true
+            case (_?, nil): return false
+            case (nil, nil): return x > y
+            }
+        }
+        return a.count > b.count
     }
     
     // MARK: - Check for Updates

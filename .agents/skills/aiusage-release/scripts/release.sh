@@ -137,28 +137,46 @@ fi
 
 echo "🔍 Current AIUsage Version: v${CURRENT_VERSION} (build ${CURRENT_BUILD})"
 
-# Parse semantic version components
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+# Parse semantic version components. A pre-release suffix (2.1.3-rc.1) is split off
+# so the numeric parts stay valid for arithmetic.
+BASE_VERSION="${CURRENT_VERSION%%-*}"
+IS_PRERELEASE=false
+[[ "$CURRENT_VERSION" == *-* ]] && IS_PRERELEASE=true
+IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
 MAJOR=${MAJOR:-0}
 MINOR=${MINOR:-0}
 PATCH=${PATCH:-0}
 
-# Determine new version
+if [[ -z "$TARGET_VERSION" && -z "$BUMP_TYPE" ]]; then
+    BUMP_TYPE="patch"
+    DEFAULTED_BUMP=true
+fi
+
+# Determine new version. Per semver, bumping from a pre-release finalizes it when the
+# pre-release already belongs to that bump level (2.1.3-rc.1 --patch -> 2.1.3).
 if [[ -n "$TARGET_VERSION" ]]; then
     NEW_VERSION="$TARGET_VERSION"
 elif [[ "$BUMP_TYPE" == "patch" ]]; then
-    NEW_PATCH=$((PATCH + 1))
-    NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+    if [[ "$IS_PRERELEASE" == true ]]; then
+        NEW_VERSION="$BASE_VERSION"
+    else
+        NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+    fi
 elif [[ "$BUMP_TYPE" == "minor" ]]; then
-    NEW_MINOR=$((MINOR + 1))
-    NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
+    if [[ "$IS_PRERELEASE" == true && "$PATCH" == "0" ]]; then
+        NEW_VERSION="$BASE_VERSION"
+    else
+        NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+    fi
 elif [[ "$BUMP_TYPE" == "major" ]]; then
-    NEW_MAJOR=$((MAJOR + 1))
-    NEW_VERSION="${NEW_MAJOR}.0.0"
-else
-    # Default if nothing specified: patch bump
-    NEW_PATCH=$((PATCH + 1))
-    NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+    if [[ "$IS_PRERELEASE" == true && "$MINOR" == "0" && "$PATCH" == "0" ]]; then
+        NEW_VERSION="$BASE_VERSION"
+    else
+        NEW_VERSION="$((MAJOR + 1)).0.0"
+    fi
+fi
+
+if [[ "${DEFAULTED_BUMP:-false}" == true ]]; then
     echo "💡 No version or bump type specified; defaulting to patch bump (v${NEW_VERSION})"
 fi
 
