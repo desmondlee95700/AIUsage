@@ -136,37 +136,15 @@ public struct MainUsageView: View {
                     Text("AIUsage")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .fixedSize()
                     
                     Text(AppVersion.displayString)
                         .font(.system(size: 11, weight: .regular, design: .rounded))
                         .foregroundColor(.white.opacity(0.40))
+                        .lineLimit(1)
+                        .fixedSize()
                     
-                    if let update = updateService.availableUpdate {
-                        Button(action: {
-                            updateService.promptUpdate(update)
-                        }) {
-                            HStack(spacing: 3.5) {
-                                Circle()
-                                    .fill(Color(red: 0.35, green: 0.65, blue: 1.0))
-                                    .frame(width: 5, height: 5)
-                                Text("New \(update.tagName)")
-                                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(Color(red: 0.25, green: 0.55, blue: 1.0).opacity(0.35))
-                            )
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.8)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Update \(update.tagName) available. Click to download.")
-                    }
                 }
             }
             
@@ -194,6 +172,8 @@ public struct MainUsageView: View {
                 Text(statusText)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .fixedSize()
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
@@ -215,7 +195,7 @@ public struct MainUsageView: View {
                             .liquidGlassButton(cornerRadius: 7, isProminent: true, tint: Color(red: 0.35, green: 0.65, blue: 1.0))
                     }
                     .buttonStyle(.plain)
-                    .help("Download update: \(update.tagName)")
+                    .help("Update \(update.tagName) available. Click to download.")
                 }
                 
                 // Provider Focus Multi-Select Filter Button

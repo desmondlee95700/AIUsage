@@ -169,14 +169,52 @@ public final class UpdateService: ObservableObject {
         return alert.runModal()
     }
     
+    /// Converts the Markdown release body into plain text for NSAlert, which can't render
+    /// Markdown: headings and emphasis markers are stripped, list items become bullets, and
+    /// the "Full changelog" link is dropped since "View Release Notes" opens the release page.
+    static func plainTextReleaseNotes(_ markdown: String, maxLength: Int = 450) -> String {
+        var lines: [String] = []
+        for rawLine in markdown.components(separatedBy: .newlines) {
+            var line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.lowercased().contains("full changelog") { continue }
+            
+            while line.hasPrefix("#") { line.removeFirst() }
+            line = line.replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "__", with: "")
+                .replacingOccurrences(of: "`", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                line = "• " + line.dropFirst(2)
+            }
+            
+            // Collapse runs of blank lines
+            if line.isEmpty && (lines.last?.isEmpty ?? true) { continue }
+            lines.append(line)
+        }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        
+        // Truncate on a line boundary so a bullet is never cut mid-sentence
+        var result = ""
+        for line in lines {
+            let candidate = result.isEmpty ? line : result + "\n" + line
+            if candidate.count > maxLength {
+                return result.isEmpty ? String(line.prefix(maxLength)) + "…" : result + "\n…"
+            }
+            result = candidate
+        }
+        return result
+    }
+    
     public func promptUpdate(_ release: GitHubRelease, allowSkip: Bool = false) {
         let alert = NSAlert()
         alert.messageText = "A New Version of AIUsage is Available!"
         
         var informativeText = "AIUsage \(release.tagName) is now available (you have \(AppVersion.displayString)).\n"
         if let notes = release.body, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let truncated = notes.count > 450 ? String(notes.prefix(450)) + "..." : notes
-            informativeText += "\nWhat's New:\n\(truncated)\n"
+            let summary = Self.plainTextReleaseNotes(notes)
+            if !summary.isEmpty {
+                informativeText += "\nWhat's New:\n\(summary)\n"
+            }
         }
         alert.informativeText = informativeText
         alert.alertStyle = .informational
