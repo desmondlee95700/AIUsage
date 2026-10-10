@@ -56,7 +56,6 @@ AIUsage/
 │       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
 │       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
 │       ├── PlanCardView.swift              # User tier badge & subscription management
-│       ├── CreditsCardView.swift           # Prompt & flow credit indicators
 │       ├── LiquidGlass.swift               # macOS 27 Liquid Glass design system helpers
 │       ├── LiquidGlassComponents.swift     # Shared glass components: gauges, meters, tiles, chips, buttons, empty states
 │       └── AppIconHelper.swift             # Dynamic app icon loader & cache
