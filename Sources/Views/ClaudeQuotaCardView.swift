@@ -33,6 +33,10 @@ public struct ClaudeQuotaCardView: View {
             if let extra = limits?.extraUsagePercent, account?.hasExtraUsageEnabled == true {
                 extraUsageSection(remainingPercent: extra)
             }
+            
+            if let activity = service.claudeActivity {
+                TokenActivityCardView(title: "Claude Code Activity", activity: activity, tint: terracottaColor)
+            }
         }
     }
     

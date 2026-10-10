@@ -46,6 +46,10 @@ public class QuotaService: ObservableObject {
     @Published public var claudeLimits: ClaudeUsageLimits? = nil
     @Published public var claudeErrorMessage: String? = nil
     
+    // Local token activity (Claude Code / Codex CLI session logs)
+    @Published public var claudeActivity: TokenActivitySummary? = nil
+    @Published public var codexActivity: TokenActivitySummary? = nil
+    
     // Codex Reset State
     @Published public var isConsumingReset: Bool = false
     @Published public var resetActionMessage: String? = nil
@@ -325,6 +329,11 @@ public class QuotaService: ObservableObject {
             }
         }
         
+        // Token activity comes from local session logs, so it's independent of connection
+        // state and doesn't hold up the refresh
+        refreshTokenActivity(codex: codexInst && selectedProviders.contains(.chatgpt),
+                             claude: claudeInst && selectedProviders.contains(.claude))
+        
         // 3. Refresh Claude (Anthropic) if installed and selected
         if claudeInst && selectedProviders.contains(.claude) {
             dispatchGroup.enter()
@@ -348,6 +357,21 @@ public class QuotaService: ObservableObject {
             if let pendingForce = self.pendingRefreshForceDiscovery {
                 self.pendingRefreshForceDiscovery = nil
                 self.refresh(forceDiscovery: pendingForce)
+            }
+        }
+    }
+    
+    // MARK: - Token Activity
+    
+    private func refreshTokenActivity(codex: Bool, claude: Bool) {
+        if codex {
+            TokenActivityService.shared.loadCodex { [weak self] summary in
+                if self?.codexActivity != summary { self?.codexActivity = summary }
+            }
+        }
+        if claude {
+            TokenActivityService.shared.loadClaude { [weak self] summary in
+                if self?.claudeActivity != summary { self?.claudeActivity = summary }
             }
         }
     }

@@ -52,6 +52,7 @@ AIUsage/
 │       ├── QuotaCardView.swift             # Antigravity quota group cards & bucket progress rows
 │       ├── ChatGPTQuotaCardView.swift      # ChatGPT plan, rate-limit windows & reset credits
 │       ├── ClaudeQuotaCardView.swift       # Claude plan & 5-hour / weekly limits
+│       ├── TokenActivityCardView.swift     # 7/14/30-day token chart (Claude Code / Codex CLI logs)
 │       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
 │       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
 │       ├── PlanCardView.swift              # User tier badge & subscription management
@@ -157,6 +158,7 @@ To maintain codebase stability, security, and strict quality control:
      - **Antigravity**: local loopback Connect-RPC (`127.0.0.1`).
      - **ChatGPT**: the bundled Codex CLI `app-server` subprocess.
      - **Claude**: read-only usage endpoints on `claude.ai` (using the Claude desktop session cookie) and `api.anthropic.com/api/oauth/usage` (using the Claude Code OAuth token).
+     - **Token activity**: local session logs only (`~/.claude/projects`, `~/.codex/sessions`); file reads, no network.
      - **Updates**: the GitHub Releases API for this repository.
      - **Browser links** (opened in the user's browser, no data requests): `claude.ai`, `chatgpt.com`.
    - Credentials are read from the local Keychain or cookie store at request time. They are never persisted, logged, or sent anywhere other than the provider's own HTTPS endpoint.
