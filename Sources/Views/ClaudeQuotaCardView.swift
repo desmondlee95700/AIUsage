@@ -5,9 +5,6 @@ public struct ClaudeQuotaCardView: View {
     public let limits: ClaudeUsageLimits?
     @ObservedObject var service: QuotaService
     
-    @State private var isUpgradeHovered: Bool = false
-    @State private var isLaunchHovered: Bool = false
-    
     public init(
         account: ClaudeAccountInfo?,
         limits: ClaudeUsageLimits?,
@@ -18,180 +15,72 @@ public struct ClaudeQuotaCardView: View {
         self.service = service
     }
     
-    private let terracottaColor = Color(red: 0.85, green: 0.45, blue: 0.25)
-    private let darkTerracotta = Color(red: 0.70, green: 0.32, blue: 0.16)
+    private let tint = LiquidGlassPalette.claude
+    
+    private struct LimitTile {
+        let title: String
+        let caption: String
+        let remainingPercent: Int
+        let usedPercent: Int
+        let reset: String?
+    }
+    
+    private func tiles(for limits: ClaudeUsageLimits) -> [LimitTile] {
+        var list: [LimitTile] = []
+        if limits.hasFiveHourWindow {
+            list.append(LimitTile(
+                title: "5-Hour",
+                caption: "Rolling burst window",
+                remainingPercent: limits.fiveHourRemainingPercent,
+                usedPercent: limits.fiveHourUsedPercent,
+                reset: limits.formattedFiveHourCountdown
+            ))
+        }
+        if limits.hasWeeklyWindow {
+            list.append(LimitTile(
+                title: "Weekly",
+                caption: "All models",
+                remainingPercent: limits.weeklyRemainingPercent,
+                usedPercent: limits.weeklyUsedPercent,
+                reset: limits.formattedWeeklyCountdown
+            ))
+        }
+        if let sonnet = limits.sonnetRemainingPercent {
+            list.append(LimitTile(
+                title: "Sonnet",
+                caption: "Weekly dedicated quota",
+                remainingPercent: sonnet,
+                usedPercent: 100 - sonnet,
+                reset: limits.formattedWeeklyCountdown
+            ))
+        }
+        return list
+    }
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Plan Card
-            planSection
+            ProviderPlanCard(
+                provider: .claude,
+                icon: AppIconHelper.claudeIcon,
+                systemFallback: "asterisk",
+                planName: account?.formattedTier ?? "Claude Free",
+                tierBadge: account?.tierBadge ?? "Free",
+                email: account?.emailAddress,
+                detail: account?.tierDescription ?? "Free tier uses dynamic server capacity cooldowns. Upgrade to Claude Pro for full quota limits.",
+                launchHelp: "Launch Claude desktop app",
+                onLaunch: { ClaudeDiscovery.launchClaudeApp() },
+                onUpgrade: openClaudeUpgrade
+            )
             
-            // Primary Quota Rate Limits Card
             quotaSection
             
-            // Extra Usage Section (if available)
             if let extra = limits?.extraUsagePercent, account?.hasExtraUsageEnabled == true {
                 extraUsageSection(remainingPercent: extra)
             }
             
             if let activity = service.claudeActivity {
-                TokenActivityCardView(title: "Claude Code Activity", activity: activity, tint: terracottaColor)
+                TokenActivityCardView(title: "Claude Code Activity", activity: activity, tint: tint)
             }
-        }
-    }
-    
-    // MARK: - Plan Card
-    
-    private var planSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                if let icon = AppIconHelper.claudeIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 14, height: 14)
-                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
-                } else {
-                    Image(systemName: "asterisk")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(terracottaColor)
-                }
-                
-                Text("Claude (Anthropic) Subscription")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
-                
-                Spacer()
-                
-                Button(action: {
-                    ClaudeDiscovery.launchClaudeApp()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 9.5, weight: .semibold))
-                        Text("Launch App")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(.white.opacity(isLaunchHovered ? 1.0 : 0.80))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3.5)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(isLaunchHovered ? 0.15 : 0.08))
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(isLaunchHovered ? 0.35 : 0.16), lineWidth: 0.8)
-                    )
-                    .scaleEffect(isLaunchHovered ? 1.03 : 1.0)
-                    .animation(LiquidGlassTokens.interactiveSpring, value: isLaunchHovered)
-                }
-                .buttonStyle(.plain)
-                .help("Launch Claude desktop app")
-                .onHover { hovering in
-                    isLaunchHovered = hovering
-                }
-            }
-            
-            HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(account?.formattedTier ?? "Claude Free")
-                            .font(.system(size: 14.5, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Text(account?.tierBadge ?? "Free")
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                            .foregroundColor(terracottaColor)
-                            .padding(.horizontal, 5.5)
-                            .padding(.vertical, 1.5)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(terracottaColor.opacity(0.18))
-                            )
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .strokeBorder(terracottaColor.opacity(0.35), lineWidth: 0.8)
-                            )
-                    }
-                    
-                    if let email = account?.emailAddress, !email.isEmpty {
-                        HStack(spacing: 4.5) {
-                            Image(systemName: "person.crop.circle.fill")
-                                .font(.system(size: 10.5))
-                                .foregroundColor(terracottaColor)
-                            
-                            Text(email)
-                                .font(.system(size: 11.5, weight: .medium))
-                                .foregroundColor(Color(red: 0.95, green: 0.82, blue: 0.75))
-                                .lineLimit(1)
-                        }
-                    }
-                    
-                    Text(account?.tierDescription ?? "Free tier uses dynamic server capacity cooldowns. Upgrade to Claude Pro for full quota limits.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.60))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                
-                Spacer()
-                
-                Button(action: {
-                    openClaudeUpgrade()
-                }) {
-                    HStack(spacing: 5) {
-                        Text("Upgrade")
-                            .font(.system(size: 12, weight: .semibold))
-                        Image(systemName: "arrow.up.forward")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        terracottaColor,
-                                        darkTerracotta
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(isUpgradeHovered ? 0.60 : 0.35), location: 0.0),
-                                        .init(color: Color.white.opacity(0.08), location: 1.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    )
-                    .shadow(
-                        color: terracottaColor.opacity(isUpgradeHovered ? 0.45 : 0.20),
-                        radius: 8,
-                        x: 0,
-                        y: 3
-                    )
-                    .scaleEffect(isUpgradeHovered ? 1.03 : 1.0)
-                    .animation(LiquidGlassTokens.interactiveSpring, value: isUpgradeHovered)
-                }
-                .buttonStyle(.plain)
-                .help("Upgrade Claude subscription")
-                .onHover { hovering in
-                    isUpgradeHovered = hovering
-                }
-            }
-            .padding(14)
-            .liquidGlassCard(cornerRadius: 16, tint: terracottaColor, material: .thinMaterial)
         }
     }
     
@@ -199,193 +88,97 @@ public struct ClaudeQuotaCardView: View {
     
     private var quotaSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(terracottaColor)
-                
-                Text("Claude (Anthropic) Rate Limits")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.90))
-            }
+            GlassSectionHeader("Rate Limits", systemImage: "gauge.with.dots.needle.67percent", tint: tint)
             
-            VStack(spacing: 0) {
+            Group {
                 if account?.canSeeUsageLimits ?? true, let limits = limits {
-                    // 1. 5-Hour Limit
-                    if limits.hasFiveHourWindow {
-                        quotaRow(
-                            title: "5-Hour Limit",
-                            subtitle: "Rolling burst window",
-                            remainingPercent: limits.fiveHourRemainingPercent,
-                            usedPercent: limits.fiveHourUsedPercent,
-                            resetCountdown: limits.formattedFiveHourCountdown
+                    let items = tiles(for: limits)
+                    QuotaTileGrid(count: items.count) { index in
+                        let item = items[index]
+                        QuotaTile(
+                            title: item.title,
+                            caption: "\(item.usedPercent)% used",
+                            fraction: Double(item.remainingPercent) / 100.0,
+                            resetText: item.reset
                         )
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
+                        .help(item.caption)
                     }
-                    
-                    // 2. Weekly Limit
-                    if limits.hasWeeklyWindow {
-                        if limits.hasFiveHourWindow {
-                            Divider()
-                                .background(Color.white.opacity(0.06))
-                                .padding(.horizontal, 14)
-                        }
-                        
-                        quotaRow(
-                            title: "Weekly Limit",
-                            subtitle: "All models (Sonnet, Opus & Haiku)",
-                            remainingPercent: limits.weeklyRemainingPercent,
-                            usedPercent: limits.weeklyUsedPercent,
-                            resetCountdown: limits.formattedWeeklyCountdown
-                        )
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                    }
-                    
-                    // 3. Optional Model-specific limit (Sonnet)
-                    if let sonnet = limits.sonnetRemainingPercent {
-                        if limits.hasFiveHourWindow || limits.hasWeeklyWindow {
-                            Divider()
-                                .background(Color.white.opacity(0.06))
-                                .padding(.horizontal, 14)
-                        }
-                        
-                        quotaRow(
-                            title: "Claude 3.7 Sonnet",
-                            subtitle: "Weekly dedicated quota",
-                            remainingPercent: sonnet,
-                            usedPercent: 100 - sonnet,
-                            resetCountdown: limits.formattedWeeklyCountdown
-                        )
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                    }
+                    .padding(8)
                 } else if account?.canSeeUsageLimits ?? true {
                     // Paid plan, usage not available: Claude Code's login has lapsed. Retries automatically.
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "wifi.slash")
-                                .font(.system(size: 13))
-                                .foregroundColor(Color.orange)
-                            Text("Connection Lost")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        Text("5-hour and weekly limits are unavailable because Claude Code hasn't been active recently. They'll return automatically once you use Claude Code again.")
-                            .font(.system(size: 11.5))
-                            .foregroundColor(.white.opacity(0.65))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(14)
+                    notice(
+                        systemImage: "wifi.slash",
+                        color: LiquidGlassPalette.moderate,
+                        title: "Connection Lost",
+                        message: "5-hour and weekly limits are unavailable because Claude Code hasn't been active recently. They'll return automatically once you use Claude Code again."
+                    )
                 } else {
-                    // Free Tier Informational State
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "info.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundColor(Color.orange)
-                            
-                            Text("Dynamic Free Tier Limits")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        
-                        Text("Claude Free does not include fixed weekly quota limits. Capacity is dynamically allocated based on real-time server traffic. Upgrade to Claude Pro to unlock guaranteed 5-hour limits and weekly model tracking.")
-                            .font(.system(size: 11.5))
-                            .foregroundColor(.white.opacity(0.65))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(14)
+                    notice(
+                        systemImage: "info.circle.fill",
+                        color: LiquidGlassPalette.moderate,
+                        title: "Dynamic Free Tier Limits",
+                        message: "Claude Free does not include fixed weekly quota limits. Capacity is dynamically allocated based on real-time server traffic. Upgrade to Claude Pro to unlock guaranteed 5-hour limits and weekly model tracking."
+                    )
                 }
             }
-            .liquidGlassCard(cornerRadius: 16, tint: terracottaColor, material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
         }
     }
     
-    private func quotaRow(
-        title: String,
-        subtitle: String,
-        remainingPercent: Int,
-        usedPercent: Int,
-        resetCountdown: String?
-    ) -> some View {
-        HStack(alignment: .center, spacing: 14) {
+    private func notice(systemImage: String, color: Color, title: String, message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(color.opacity(0.16)))
+            
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 13.5, weight: .medium))
-                        .foregroundColor(.white)
-                    
-                    Text("• \(subtitle)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.50))
-                }
-                
-                if let resetInfo = resetCountdown {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hourglass")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.white.opacity(0.40))
-                        Text(resetInfo)
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.55))
-                    }
-                }
-                
-                Text("\(usedPercent)% quota utilized")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.white.opacity(0.40))
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 10) {
-                Text("\(remainingPercent)%")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                
-                CircularProgressView(
-                    fraction: Double(remainingPercent) / 100.0,
-                    size: 32,
-                    strokeWidth: 4.0
-                )
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.primary)
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(LiquidGlassText.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
     }
     
     // MARK: - Extra Usage Section
     
     private func extraUsageSection(remainingPercent: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(Color(red: 0.98, green: 0.78, blue: 0.25))
-                
-                Text("Extra Usage Credits")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
-            }
+        let gold = LiquidGlassPalette.credit
+        
+        return VStack(alignment: .leading, spacing: 8) {
+            GlassSectionHeader("Extra Usage Credits", systemImage: "bolt.fill", tint: gold)
             
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Pay-as-you-go extra usage is active")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(.white)
-                    Text("Allows continued generation after standard limits are exhausted.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.55))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Pay-as-you-go extra usage is active")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundColor(LiquidGlassText.primary)
+                        Text("Allows continued generation after standard limits are exhausted.")
+                            .font(.system(size: 11))
+                            .foregroundColor(LiquidGlassText.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    
+                    Spacer(minLength: 8)
+                    
+                    Text("\(remainingPercent)%")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(LiquidGlassText.primary)
                 }
                 
-                Spacer()
-                
-                Text("\(remainingPercent)%")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                LiquidMeterBar(fraction: Double(remainingPercent) / 100.0, tint: gold, height: 7)
             }
             .padding(14)
-            .liquidGlassCard(cornerRadius: 16, tint: Color(red: 0.98, green: 0.78, blue: 0.25), material: .thinMaterial)
+            .liquidGlassCard(cornerRadius: 16, tint: gold, material: .thinMaterial)
         }
     }
     

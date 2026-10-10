@@ -5,8 +5,10 @@ public struct MainUsageView: View {
     @ObservedObject private var updateService = UpdateService.shared
     @State private var spinAngle: Double = 0.0
     @State private var isShowingProviderFocusPopover: Bool = false
+    @Namespace private var switcherNamespace
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
 
     public init(service: QuotaService = .shared) {
@@ -20,15 +22,11 @@ public struct MainUsageView: View {
             // Header Bar
             headerBar
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            specularDivider
 
             // Multi-Provider Flipping Switcher (ONLY shown when > 1 provider is selected)
             if service.selectedInstalledProviders.count > 1 {
                 multiProviderSwitcherBar
-
-                Divider()
-                    .background(Color.white.opacity(0.04))
             }
 
             // Fixed-Height Content Container (ZERO height shift, ZERO flicker)
@@ -57,9 +55,14 @@ public struct MainUsageView: View {
             }
             .frame(height: 440)
             .clipped()
-            .animation(.easeInOut(duration: 0.12), value: service.selectedProviders)
-            .animation(.easeInOut(duration: 0.20), value: service.dualActiveProvider)
+            .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.selectedProviders)
+            .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.dualActiveProvider)
         }
+        .background(
+            // Provider-coloured tint bleed pooled behind the glass
+            AmbientTintBackground(tint: activeTint)
+                .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: activeTint)
+        )
         .frame(width: 380)
         .fixedSize(horizontal: true, vertical: true)
         .background(
@@ -98,6 +101,42 @@ public struct MainUsageView: View {
         .animation(LiquidGlassTokens.stateSpring, value: glassIntensity)
     }
 
+    // MARK: - Shared Helpers
+
+    /// Accent of the provider currently on screen, used for the ambient tint bleed
+    private var activeTint: Color {
+        let selected = service.selectedInstalledProviders
+        if selected.count == 1 {
+            return LiquidGlassPalette.accent(for: selected[0])
+        } else if selected.count > 1 {
+            return LiquidGlassPalette.accent(for: service.dualActiveProvider)
+        }
+        return LiquidGlassPalette.aiBlue
+    }
+
+    /// Hairline that fades out at both ends, like light along a glass edge
+    private var specularDivider: some View {
+        LinearGradient(
+            colors: [Color.white.opacity(0.0), Color.white.opacity(0.16), Color.white.opacity(0.0)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(height: 1)
+        .padding(.horizontal, 14)
+    }
+
+    /// Remaining fraction shown on a provider's switcher tab, or nil when it has no figure
+    private func remainingFraction(for provider: AIProvider) -> Double? {
+        switch provider {
+        case .gemini:
+            return service.isGeminiConnected ? Double(service.geminiPercentage) / 100.0 : nil
+        case .chatgpt:
+            return service.isCodexConnected ? Double(service.codexRemainingPercentage) / 100.0 : nil
+        case .claude:
+            guard service.isClaudeConnected, let pct = service.claudePercentage else { return nil }
+            return Double(pct) / 100.0
+        }
+    }
     
     // MARK: - Header
     
@@ -109,42 +148,32 @@ public struct MainUsageView: View {
                     Image(nsImage: icon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 20, height: 20)
-                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .frame(width: 22, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.8)
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.0), lineWidth: 0.8)
                         )
-                        .shadow(color: Color(red: 0.35, green: 0.65, blue: 1.0).opacity(0.40), radius: 4, x: 0, y: 1)
+                        .shadow(color: activeTint.opacity(0.45), radius: 5, x: 0, y: 1)
                 } else {
                     Image(systemName: "sparkles")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.38, green: 0.62, blue: 1.0),
-                                    Color(red: 0.22, green: 0.44, blue: 0.95)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .shadow(color: Color(red: 0.25, green: 0.45, blue: 0.95).opacity(0.50), radius: 4, x: 0, y: 0)
+                        .foregroundColor(LiquidGlassPalette.aiBlue)
+                        .shadow(color: LiquidGlassPalette.aiBlue.opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text("AIUsage")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(LiquidGlassText.primary)
                         .lineLimit(1)
                         .fixedSize()
                     
                     Text(AppVersion.displayString)
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .foregroundColor(.white.opacity(0.40))
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .foregroundColor(LiquidGlassText.tertiary)
                         .lineLimit(1)
                         .fixedSize()
-                    
                 }
             }
             
@@ -155,62 +184,52 @@ public struct MainUsageView: View {
                     return ("No Tools", Color.gray)
                 }
                 let live = selected.contains { service.isProviderConnected($0) }
-                return (live ? "Live" : "Offline", live ? Color(red: 0.20, green: 0.84, blue: 0.50) : Color.orange)
+                return (live ? "Live" : "Offline", live ? LiquidGlassPalette.healthy : LiquidGlassPalette.moderate)
             }()
             
             HStack(spacing: 5) {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 6, height: 6)
-                    .shadow(
-                        color: statusColor.opacity(0.80),
-                        radius: 3,
-                        x: 0,
-                        y: 0
-                    )
+                    .shadow(color: statusColor.opacity(0.80), radius: 3, x: 0, y: 0)
                 
                 Text(statusText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.secondary)
                     .lineLimit(1)
                     .fixedSize()
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
             .liquidGlassPill(isProminent: false, tint: statusColor)
             
-            Spacer()
+            Spacer(minLength: 4)
             
-            // Action Buttons
-            HStack(spacing: 6) {
-                // Update Button (when update is available)
-                if let update = updateService.availableUpdate {
-                    Button(action: {
-                        updateService.promptUpdate(update)
-                    }) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundColor(Color(red: 0.35, green: 0.65, blue: 1.0))
-                            .frame(width: 28, height: 28)
-                            .liquidGlassButton(cornerRadius: 7, isProminent: true, tint: Color(red: 0.35, green: 0.65, blue: 1.0))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Update \(update.tagName) available. Click to download.")
+            // Update Button (when update is available)
+            if let update = updateService.availableUpdate {
+                Button(action: {
+                    updateService.promptUpdate(update)
+                }) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 26, height: 26)
+                        .liquidGlassButton(cornerRadius: 13, isProminent: true, tint: LiquidGlassPalette.aiBlue)
                 }
-                
-                // Provider Focus Multi-Select Filter Button
+                .buttonStyle(.plain)
+                .help("Update \(update.tagName) available. Click to download.")
+            }
+            
+            // Control cluster: one glass capsule holding the header actions
+            HStack(spacing: 0) {
                 if service.installedProvidersCount > 1 {
-                    Button(action: {
+                    GlassIconButton(
+                        systemImage: "slider.horizontal.3",
+                        isActive: isShowingProviderFocusPopover,
+                        help: "Select active AI providers (Multi-Choice)"
+                    ) {
                         isShowingProviderFocusPopover.toggle()
-                    }) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundColor(isShowingProviderFocusPopover ? Color(red: 0.35, green: 0.60, blue: 1.0) : .white.opacity(0.85))
-                            .frame(width: 28, height: 28)
-                            .liquidGlassButton(cornerRadius: 7, isProminent: false)
                     }
-                    .buttonStyle(.plain)
-                    .help("Select active AI providers (Multi-Choice)")
                     .popover(isPresented: $isShowingProviderFocusPopover, arrowEdge: .bottom) {
                         ProviderFocusSubmenuView(service: service, onDismiss: {
                             isShowingProviderFocusPopover = false
@@ -219,36 +238,24 @@ public struct MainUsageView: View {
                     }
                 }
                 
-                // Refresh Button
-                Button(action: {
-                    withAnimation(LiquidGlassTokens.interactiveSpring) {
+                GlassIconButton(
+                    systemImage: "arrow.clockwise",
+                    isActive: service.isLoading,
+                    rotation: spinAngle,
+                    help: "Refresh quotas for all selected providers"
+                ) {
+                    withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion)) {
                         spinAngle += 360
                     }
                     service.refresh(forceDiscovery: true)
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(service.isLoading ? Color(red: 0.35, green: 0.60, blue: 1.0) : .white.opacity(0.85))
-                        .rotationEffect(.degrees(spinAngle))
-                        .frame(width: 28, height: 28)
-                        .liquidGlassButton(cornerRadius: 7, isProminent: false)
                 }
-                .buttonStyle(.plain)
-                .help("Refresh quotas for all selected providers")
                 
-                // Quit Button
-                Button(action: {
+                GlassIconButton(systemImage: "power", help: "Quit AIUsage") {
                     NSApplication.shared.terminate(nil)
-                }) {
-                    Image(systemName: "power")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.70))
-                        .frame(width: 28, height: 28)
-                        .liquidGlassButton(cornerRadius: 7, isProminent: false)
                 }
-                .buttonStyle(.plain)
-                .help("Quit AIUsage")
             }
+            .padding(2)
+            .liquidGlassPill()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -289,140 +296,131 @@ public struct MainUsageView: View {
     // MARK: - Multi-Provider Flipping Switcher Bar
     
     private var multiProviderSwitcherBar: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             if service.selectedInstalledProviders.contains(.gemini) {
                 dualProviderTabButton(
                     provider: .gemini,
-                    title: "Antigravity",
-                    subtitle: "Google",
                     icon: AppIconHelper.antigravityIcon,
-                    systemFallback: "sparkles",
-                    badge: service.badgeText(for: .gemini),
-                    accentColor: Color(red: 0.28, green: 0.54, blue: 0.98)
+                    systemFallback: "sparkles"
                 )
             }
             
             if service.selectedInstalledProviders.contains(.chatgpt) {
                 dualProviderTabButton(
                     provider: .chatgpt,
-                    title: "ChatGPT",
-                    subtitle: "OpenAI",
                     icon: AppIconHelper.chatgptIcon,
-                    systemFallback: "circle.hexagongrid",
-                    badge: service.badgeText(for: .chatgpt),
-                    accentColor: Color(red: 0.16, green: 0.74, blue: 0.52)
+                    systemFallback: "circle.hexagongrid"
                 )
             }
             
             if service.selectedInstalledProviders.contains(.claude) {
                 dualProviderTabButton(
                     provider: .claude,
-                    title: "Claude",
-                    subtitle: "Anthropic",
                     icon: AppIconHelper.claudeIcon,
-                    systemFallback: "asterisk",
-                    badge: service.badgeText(for: .claude),
-                    accentColor: Color(red: 0.85, green: 0.45, blue: 0.25)
+                    systemFallback: "asterisk"
                 )
             }
         }
         .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.18))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.8)
+            // Recessed track: shadow rim on top, light catch on the bottom edge
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.25), Color.white.opacity(0.10)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
         )
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.top, 2)
+        .padding(.bottom, 8)
     }
     
     private func dualProviderTabButton(
         provider: AIProvider,
-        title: String,
-        subtitle: String,
         icon: NSImage?,
-        systemFallback: String,
-        badge: String,
-        accentColor: Color,
-        isDisabled: Bool = false
+        systemFallback: String
     ) -> some View {
         let isSelected = service.dualActiveProvider == provider
+        let accentColor = LiquidGlassPalette.accent(for: provider)
+        let fraction = remainingFraction(for: provider)
         
         return Button(action: {
-            guard !isDisabled else { return }
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+            withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.interactiveSpring, reduceMotion: reduceMotion)) {
                 service.dualActiveProvider = provider
             }
         }) {
-            HStack(spacing: 5) {
-                if let icon = icon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 14, height: 14)
-                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
-                } else {
-                    Image(systemName: systemFallback)
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundColor(isSelected ? .white : accentColor.opacity(isDisabled ? 0.40 : 1.0))
+            HStack(spacing: 6) {
+                ZStack {
+                    if let fraction = fraction {
+                        CircularProgressView(fraction: fraction, size: 22, strokeWidth: 2.5)
+                    }
+                    Group {
+                        if let icon = icon {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 12, height: 12)
+                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        } else {
+                            Image(systemName: systemFallback)
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundColor(isSelected ? .white : accentColor)
+                        }
+                    }
                 }
+                .frame(width: 22, height: 22)
                 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(title)
-                        .font(.system(size: 10.5, weight: isSelected ? .bold : .medium))
-                        .foregroundColor(isSelected ? .white : .white.opacity(isDisabled ? 0.35 : 0.75))
+                    Text(provider.displayName)
+                        .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                        .foregroundColor(isSelected ? LiquidGlassText.primary : LiquidGlassText.secondary)
                         .lineLimit(1)
                     
-                    Text(subtitle)
-                        .font(.system(size: 8.5, weight: .regular))
-                        .foregroundColor(isSelected ? .white.opacity(0.80) : .white.opacity(isDisabled ? 0.25 : 0.45))
+                    Text(service.badgeText(for: provider))
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(isSelected ? LiquidGlassText.secondary : LiquidGlassText.tertiary)
                         .lineLimit(1)
                 }
                 
-                Text(badge)
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    .padding(.horizontal, 4.5)
-                    .padding(.vertical, 1.5)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(isSelected ? Color.white.opacity(0.22) : Color.white.opacity(0.08))
-                    )
-                    .foregroundColor(isSelected ? .white : .white.opacity(isDisabled ? 0.30 : 0.60))
+                Spacer(minLength: 0)
             }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 7)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 4.5)
-            .padding(.horizontal, 4)
             .background(
-                Group {
+                ZStack {
                     if isSelected {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        // Glass lens that slides to the selected provider
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .fill(
                                 LinearGradient(
-                                    colors: [
-                                        accentColor.opacity(0.85),
-                                        accentColor.opacity(0.65)
-                                    ],
+                                    colors: [accentColor.opacity(0.55), accentColor.opacity(0.30)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.8)
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.3), lineWidth: 1)
                             )
-                            .shadow(color: accentColor.opacity(0.40), radius: 5, x: 0, y: 1.5)
-                    } else {
-                        Color.clear
+                            .shadow(color: accentColor.opacity(0.45), radius: 6, x: 0, y: 2)
+                            .matchedGeometryEffect(id: "providerLens", in: switcherNamespace)
                     }
                 }
             )
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
+        .help("\(provider.fullName): \(service.badgeText(for: provider))")
     }
     
     // MARK: - Dual Flipping Content View
@@ -462,67 +460,18 @@ public struct MainUsageView: View {
     }
     
     private var claudeOfflineView: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(.thinMaterial)
-                    .frame(width: 68, height: 68)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
-                
-                if let icon = AppIconHelper.claudeIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                } else {
-                    Image(systemName: "asterisk")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundColor(Color(red: 0.85, green: 0.45, blue: 0.25))
-                }
-            }
-            
-            VStack(spacing: 5) {
-                Text("Claude (Anthropic) Disconnected")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text(service.claudeErrorMessage ?? "Claude desktop app or local session not detected. Launch Claude to view real-time quota telemetry.")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.60))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            
-            Button(action: {
+        GlassEmptyState(
+            icon: AppIconHelper.claudeIcon,
+            systemFallback: "asterisk",
+            tint: LiquidGlassPalette.claude,
+            title: "Claude (Anthropic) Disconnected",
+            message: service.claudeErrorMessage ?? "Claude desktop app or local session not detected. Launch Claude to view real-time quota telemetry."
+        ) {
+            GlassCapsuleButton("Launch Claude", systemImage: "arrow.up.forward.app", style: .prominent(LiquidGlassPalette.claude)) {
                 ClaudeDiscovery.launchClaudeApp()
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Launch Claude")
-                        .font(.system(size: 12.5, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color(red: 0.85, green: 0.45, blue: 0.25).opacity(0.25))
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color(red: 0.85, green: 0.45, blue: 0.25).opacity(0.50), lineWidth: 1)
-                )
             }
-            .buttonStyle(.plain)
         }
-        .padding(.vertical, 36)
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
     }
     
     // MARK: - Gemini Views
@@ -551,108 +500,21 @@ public struct MainUsageView: View {
     }
     
     private var geminiOfflineView: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(.thinMaterial)
-                    .frame(width: 68, height: 68)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
-                
-                if let icon = AppIconHelper.antigravityIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.8)
-                        )
-                } else {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 26, weight: .light))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color(red: 0.40, green: 0.65, blue: 1.0), Color(red: 0.20, green: 0.45, blue: 0.95)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
+        GlassEmptyState(
+            icon: AppIconHelper.antigravityIcon,
+            systemFallback: "sparkles",
+            tint: LiquidGlassPalette.antigravity,
+            title: "Antigravity (Google) Not Running",
+            message: "Launch Antigravity or Antigravity IDE to monitor live Gemini model quotas, 5h burst limits, and weekly resets."
+        ) {
+            GlassCapsuleButton("Retry", systemImage: "arrow.clockwise", style: .prominent(LiquidGlassPalette.antigravity), help: "Retry Antigravity") {
+                service.refresh(forceDiscovery: true)
             }
-            
-            VStack(spacing: 5) {
-                Text("Antigravity (Google) Not Running")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text("Launch Antigravity or Antigravity IDE to monitor live Gemini model quotas, 5h burst limits, and weekly resets.")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.60))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            
-            HStack(spacing: 10) {
-                Button(action: {
-                    service.refresh(forceDiscovery: true)
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Retry Antigravity")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(red: 0.28, green: 0.50, blue: 0.95), Color(red: 0.18, green: 0.38, blue: 0.88)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: {
-                    ProcessDiscovery.launchAntigravityApp()
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Launch App")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
+            GlassCapsuleButton("Launch App", systemImage: "arrow.up.forward.app") {
+                ProcessDiscovery.launchAntigravityApp()
             }
         }
-        .padding(.vertical, 28)
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
     }
     
     // MARK: - ChatGPT Views
@@ -672,178 +534,37 @@ public struct MainUsageView: View {
     }
     
     private var chatgptOfflineView: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(.thinMaterial)
-                    .frame(width: 68, height: 68)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
-                
-                if let icon = AppIconHelper.chatgptIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.8)
-                        )
-                } else {
-                    Image(systemName: "circle.hexagongrid")
-                        .font(.system(size: 26, weight: .light))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color(red: 0.20, green: 0.85, blue: 0.60), Color(red: 0.12, green: 0.65, blue: 0.45)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
+        GlassEmptyState(
+            icon: AppIconHelper.chatgptIcon,
+            systemFallback: "circle.hexagongrid",
+            tint: LiquidGlassPalette.chatgpt,
+            title: "ChatGPT (OpenAI) Not Connected",
+            message: "Ensure ChatGPT.app is installed and signed in. AIUsage reads limits directly from the local ChatGPT runtime."
+        ) {
+            GlassCapsuleButton("Retry", systemImage: "arrow.clockwise", style: .prominent(LiquidGlassPalette.chatgpt), help: "Retry ChatGPT") {
+                service.refresh()
             }
-            
-            VStack(spacing: 5) {
-                Text("ChatGPT (OpenAI) Not Connected")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text("Ensure ChatGPT.app is installed and signed in. AIUsage reads limits directly from the local ChatGPT runtime.")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.60))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            
-            HStack(spacing: 10) {
-                Button(action: {
-                    service.refresh()
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Retry ChatGPT")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(red: 0.14, green: 0.68, blue: 0.48), Color(red: 0.08, green: 0.50, blue: 0.35)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: {
-                    CodexDiscovery.launchChatGPTApp()
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.forward.app")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Launch App")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
+            GlassCapsuleButton("Launch App", systemImage: "arrow.up.forward.app") {
+                CodexDiscovery.launchChatGPTApp()
             }
         }
-        .padding(.vertical, 28)
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
     }
     
     // MARK: - No Tools Installed View
     
     private var noToolsInstalledView: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(.thinMaterial)
-                    .frame(width: 68, height: 68)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true), lineWidth: 1)
-                    )
-                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
-                
-                Image(systemName: "sparkles.rectangle.stack")
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(red: 0.40, green: 0.65, blue: 1.0), Color(red: 0.20, green: 0.85, blue: 0.60)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            
-            VStack(spacing: 6) {
-                Text("No AI Tools Detected")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Text("Install Antigravity, ChatGPT, or Claude for macOS to monitor live model quotas and rate limits.")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.60))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            
-            Button(action: {
+        GlassEmptyState(
+            icon: nil,
+            systemFallback: "sparkles.rectangle.stack",
+            tint: LiquidGlassPalette.aiBlue,
+            title: "No AI Tools Detected",
+            message: "Install Antigravity, ChatGPT, or Claude for macOS to monitor live model quotas and rate limits."
+        ) {
+            GlassCapsuleButton("Check Again", systemImage: "arrow.clockwise", style: .prominent(LiquidGlassPalette.aiBlue)) {
                 service.refresh(forceDiscovery: true)
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Check Again")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.28, green: 0.50, blue: 0.95), Color(red: 0.18, green: 0.38, blue: 0.88)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.2), lineWidth: 1)
-                )
             }
-            .buttonStyle(.plain)
         }
-        .padding(.vertical, 36)
-        .frame(maxWidth: .infinity)
         .frame(minHeight: 280)
     }
 }

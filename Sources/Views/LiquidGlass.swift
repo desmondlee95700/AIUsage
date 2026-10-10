@@ -70,10 +70,90 @@ public enum LiquidGlassTokens {
         )
     }
     
-    // Viscous Fluid Springs (Authentic Apple physical motion)
-    public static let interactiveSpring = Animation.spring(response: 0.28, dampingFraction: 0.72, blendDuration: 0.15)
-    public static let stateSpring = Animation.spring(response: 0.38, dampingFraction: 0.78, blendDuration: 0.20)
-    public static let metricSpring = Animation.spring(response: 0.46, dampingFraction: 0.74, blendDuration: 0.25)
+    // Viscous Fluid Springs (design-tokens.md §4)
+    public static let interactiveSpring = Animation.spring(response: 0.28, dampingFraction: 0.65, blendDuration: 0.15)
+    public static let hoverSpring = Animation.spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.20)
+    public static let stateSpring = Animation.spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0.25)
+    public static let metricSpring = Animation.spring(response: 0.50, dampingFraction: 0.70, blendDuration: 0.30)
+
+    /// Returns `nil` when Reduce Motion is on so value changes snap instead of springing
+    public static func motion(_ animation: Animation, reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : animation
+    }
+}
+
+// MARK: - Palette (design-tokens.md §5)
+
+public enum LiquidGlassPalette {
+    public static let aiBlue = Color(red: 0.25, green: 0.48, blue: 0.98)
+    public static let healthy = Color(red: 0.20, green: 0.82, blue: 0.48)
+    public static let moderate = Color(red: 0.98, green: 0.68, blue: 0.18)
+    public static let critical = Color(red: 0.96, green: 0.28, blue: 0.32)
+    public static let credit = Color(red: 0.98, green: 0.78, blue: 0.25)
+
+    public static let antigravity = Color(red: 0.28, green: 0.54, blue: 0.98)
+    public static let chatgpt = Color(red: 0.16, green: 0.74, blue: 0.52)
+    public static let claude = Color(red: 0.85, green: 0.45, blue: 0.25)
+
+    public static func accent(for provider: AIProvider) -> Color {
+        switch provider {
+        case .gemini: return antigravity
+        case .chatgpt: return chatgpt
+        case .claude: return claude
+        }
+    }
+}
+
+// MARK: - Text Contrast (accessibility-performance.md §2)
+
+public enum LiquidGlassText {
+    public static let primary = Color.white
+    /// Secondary labels and descriptions
+    public static let secondary = Color.white.opacity(0.78)
+    /// Captions, units and footnotes: the 0.65 floor for text on dark glass
+    public static let tertiary = Color.white.opacity(0.65)
+}
+
+// MARK: - Quota Level
+
+/// Health band for a remaining-quota fraction, shared by gauges, meters and chips.
+public enum QuotaLevel {
+    case healthy, moderate, critical
+
+    public init(fraction: Double) {
+        if fraction >= 0.5 {
+            self = .healthy
+        } else if fraction >= 0.2 {
+            self = .moderate
+        } else {
+            self = .critical
+        }
+    }
+
+    public var color: Color {
+        switch self {
+        case .healthy: return LiquidGlassPalette.healthy
+        case .moderate: return LiquidGlassPalette.moderate
+        case .critical: return LiquidGlassPalette.critical
+        }
+    }
+
+    /// Two-stop ramp for arcs and bars, ending on the band colour
+    public var gradientColors: [Color] {
+        switch self {
+        case .healthy: return [Color(red: 0.18, green: 0.72, blue: 0.85), color]
+        case .moderate: return [Color(red: 0.98, green: 0.84, blue: 0.30), color]
+        case .critical: return [Color(red: 0.98, green: 0.48, blue: 0.42), color]
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .healthy: return "Healthy"
+        case .moderate: return "Low"
+        case .critical: return "Critical"
+        }
+    }
 }
 
 // MARK: - Liquid Glass Card Modifier (Control Center Module)

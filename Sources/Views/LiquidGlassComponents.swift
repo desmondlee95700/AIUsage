@@ -1,0 +1,753 @@
+//
+//  LiquidGlassComponents.swift
+//  AIUsage
+//  Shared Liquid Glass building blocks: gauges, meters, tiles, chips, buttons and empty states.
+//
+
+import SwiftUI
+import AppKit
+
+// MARK: - Section Header
+
+/// Small label row that sits above a card: provider icon or symbol, title, optional trailing accessory.
+public struct GlassSectionHeader<Trailing: View>: View {
+    public let title: String
+    public let systemImage: String
+    public let tint: Color
+    public let trailing: Trailing
+
+    public init(
+        _ title: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.tint = tint
+        self.trailing = trailing()
+    }
+
+    public var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(tint)
+                .frame(width: 20, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(tint.opacity(0.16))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 0.7), lineWidth: 0.8)
+                )
+
+            Text(title)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundColor(LiquidGlassText.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            trailing
+        }
+    }
+}
+
+public extension GlassSectionHeader where Trailing == EmptyView {
+    init(_ title: String, systemImage: String, tint: Color) {
+        self.init(title, systemImage: systemImage, tint: tint) { EmptyView() }
+    }
+}
+
+// MARK: - Chip
+
+/// L2 capsule badge for plan tiers, counts and health labels.
+public struct GlassChip: View {
+    public let text: String
+    public let tint: Color
+    public let systemImage: String?
+
+    public init(_ text: String, tint: Color, systemImage: String? = nil) {
+        self.text = text
+        self.tint = tint
+        self.systemImage = systemImage
+    }
+
+    public var body: some View {
+        HStack(spacing: 3) {
+            if let systemImage = systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 8, weight: .bold))
+            }
+            Text(text)
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            Capsule(style: .continuous)
+                .fill(tint.opacity(0.16))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(tint.opacity(0.38), lineWidth: 0.8)
+        )
+        .fixedSize()
+    }
+}
+
+// MARK: - Capsule Button
+
+/// Capsule action button. `.standard` is frosted glass; `.prominent` is accent-filled glass.
+public struct GlassCapsuleButton: View {
+    public enum Style {
+        case standard
+        case prominent(Color)
+    }
+
+    public enum Size {
+        case small, regular
+    }
+
+    public let title: String
+    public let systemImage: String?
+    public let trailingSystemImage: String?
+    public let style: Style
+    public let size: Size
+    public let help: String?
+    public let action: () -> Void
+
+    public init(
+        _ title: String,
+        systemImage: String? = nil,
+        trailingSystemImage: String? = nil,
+        style: Style = .standard,
+        size: Size = .regular,
+        help: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.trailingSystemImage = trailingSystemImage
+        self.style = style
+        self.size = size
+        self.help = help
+        self.action = action
+    }
+
+    private var tint: Color? {
+        if case .prominent(let color) = style { return color }
+        return nil
+    }
+
+    public var body: some View {
+        let isSmall = size == .small
+
+        Button(action: action) {
+            HStack(spacing: isSmall ? 4 : 5) {
+                if let systemImage = systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: isSmall ? 9.5 : 10.5, weight: .semibold))
+                }
+                Text(title)
+                    .font(.system(size: isSmall ? 11 : 12, weight: tint == nil ? .medium : .semibold))
+                    .lineLimit(1)
+                if let trailingSystemImage = trailingSystemImage {
+                    Image(systemName: trailingSystemImage)
+                        .font(.system(size: isSmall ? 8.5 : 9.5, weight: .bold))
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, isSmall ? 10 : 14)
+            .padding(.vertical, isSmall ? 4 : 7)
+            .liquidGlassButton(cornerRadius: 100, isProminent: tint != nil, tint: tint)
+            .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .help(help ?? title)
+    }
+}
+
+// MARK: - Icon Button
+
+/// Square icon button used inside the header control cluster.
+public struct GlassIconButton: View {
+    public let systemImage: String
+    public let isActive: Bool
+    public let activeTint: Color
+    public let help: String
+    public let rotation: Double
+    public let action: () -> Void
+
+    @State private var isHovered = false
+
+    public init(
+        systemImage: String,
+        isActive: Bool = false,
+        activeTint: Color = LiquidGlassPalette.aiBlue,
+        rotation: Double = 0,
+        help: String,
+        action: @escaping () -> Void
+    ) {
+        self.systemImage = systemImage
+        self.isActive = isActive
+        self.activeTint = activeTint
+        self.rotation = rotation
+        self.help = help
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundColor(isActive ? activeTint : .white.opacity(isHovered ? 1.0 : 0.82))
+                .rotationEffect(.degrees(rotation))
+                .frame(width: 26, height: 26)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(isHovered ? 0.14 : 0.0))
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .animation(LiquidGlassTokens.hoverSpring, value: isHovered)
+        .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Ring Gauge
+
+/// Circular remaining-quota gauge with a glowing arc coloured by `QuotaLevel`, optionally labelled in the centre.
+public struct LiquidRingGauge: View {
+    public let fraction: Double
+    public let size: CGFloat
+    public let lineWidth: CGFloat
+    public let showsLabel: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(fraction: Double, size: CGFloat = 56, lineWidth: CGFloat = 6, showsLabel: Bool = true) {
+        self.fraction = max(0.0, min(1.0, fraction))
+        self.size = size
+        self.lineWidth = lineWidth
+        self.showsLabel = showsLabel
+    }
+
+    public var body: some View {
+        let level = QuotaLevel(fraction: fraction)
+
+        ZStack {
+            // Recessed track
+            Circle()
+                .stroke(Color.white.opacity(0.09), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+
+            // Soft tinted well behind the label
+            if showsLabel {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [level.color.opacity(0.16), level.color.opacity(0.0)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: size / 2
+                        )
+                    )
+                    .padding(lineWidth)
+            }
+
+            // Progress arc
+            Circle()
+                .trim(from: 0.0, to: CGFloat(fraction))
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: level.gradientColors),
+                        center: .center,
+                        startAngle: .degrees(0),
+                        endAngle: .degrees(360 * max(fraction, 0.01))
+                    ),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .shadow(color: level.color.opacity(0.55), radius: lineWidth * 0.8, x: 0, y: 0)
+
+            if showsLabel {
+                HStack(alignment: .firstTextBaseline, spacing: 0.5) {
+                    Text("\(Int((fraction * 100).rounded()))")
+                        .font(.system(size: size * 0.27, weight: .bold, design: .rounded))
+                        .foregroundColor(LiquidGlassText.primary)
+                    Text("%")
+                        .font(.system(size: size * 0.15, weight: .semibold, design: .rounded))
+                        .foregroundColor(LiquidGlassText.tertiary)
+                }
+                .monospacedDigit()
+            }
+        }
+        .frame(width: size, height: size)
+        .animation(LiquidGlassTokens.motion(LiquidGlassTokens.metricSpring, reduceMotion: reduceMotion), value: fraction)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Int((fraction * 100).rounded())) percent remaining")
+    }
+}
+
+// MARK: - Meter Bar
+
+/// Horizontal glass capsule meter. Fill colour follows `QuotaLevel` unless a tint is given.
+public struct LiquidMeterBar: View {
+    public let fraction: Double
+    public let tint: Color?
+    public let height: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(fraction: Double, tint: Color? = nil, height: CGFloat = 6) {
+        self.fraction = max(0.0, min(1.0, fraction))
+        self.tint = tint
+        self.height = height
+    }
+
+    public var body: some View {
+        let level = QuotaLevel(fraction: fraction)
+        let colors = tint.map { [$0.opacity(0.70), $0] } ?? level.gradientColors
+        let glow = tint ?? level.color
+
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                    )
+
+                Capsule(style: .continuous)
+                    .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
+                    .overlay(
+                        // Specular sheen along the top edge of the fill
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.35), Color.white.opacity(0.0)],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                    )
+                    .frame(width: fraction > 0 ? max(height, proxy.size.width * CGFloat(fraction)) : 0)
+                    .shadow(color: glow.opacity(0.50), radius: height * 0.7, x: 0, y: 0)
+            }
+        }
+        .frame(height: height)
+        .animation(LiquidGlassTokens.motion(LiquidGlassTokens.metricSpring, reduceMotion: reduceMotion), value: fraction)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Int((fraction * 100).rounded())) percent remaining")
+    }
+}
+
+// MARK: - Quota Tile
+
+/// Control Center–style tile: ring gauge, window name, caption and reset countdown.
+/// Drawn as an L2 inner surface (translucent fill, no extra material) for use inside an L1 card.
+public struct QuotaTile: View {
+    public let title: String
+    public let caption: String?
+    public let fraction: Double
+    public let resetText: String?
+
+    @State private var isHovered = false
+
+    public init(title: String, caption: String?, fraction: Double, resetText: String?) {
+        self.title = title
+        self.caption = caption
+        self.fraction = fraction
+        self.resetText = resetText
+    }
+
+    public var body: some View {
+        let level = QuotaLevel(fraction: fraction)
+
+        VStack(spacing: 8) {
+            LiquidRingGauge(fraction: fraction, size: 62, lineWidth: 6.5)
+                .padding(.top, 2)
+
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                if let caption = caption {
+                    Text(caption)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(LiquidGlassText.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+
+            GlassChip(level.label, tint: level.color)
+
+            if let resetText = resetText {
+                HStack(alignment: .top, spacing: 3) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .padding(.top, 1.5)
+                    Text(resetText)
+                        .font(.system(size: 10))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundColor(LiquidGlassText.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(isHovered ? 0.09 : 0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: isHovered ? 0.9 : 0.6), lineWidth: 0.8)
+        )
+        .animation(LiquidGlassTokens.hoverSpring, value: isHovered)
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Lays out quota tiles two or three to a row.
+public struct QuotaTileGrid<Tile: View>: View {
+    public let count: Int
+    public let tile: (Int) -> Tile
+
+    public init(count: Int, @ViewBuilder tile: @escaping (Int) -> Tile) {
+        self.count = count
+        self.tile = tile
+    }
+
+    private var rows: [[Int]] {
+        let perRow = count == 3 ? 3 : 2
+        return stride(from: 0, to: count, by: perRow).map { start in
+            Array(start..<min(start + perRow, count))
+        }
+    }
+
+    public var body: some View {
+        VStack(spacing: 8) {
+            ForEach(rows, id: \.self) { row in
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(row, id: \.self) { index in
+                        tile(index)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Provider Plan Card
+
+/// Account card shared by all providers: glowing app icon, plan, tier chip, email, description and actions.
+public struct ProviderPlanCard: View {
+    public let provider: AIProvider
+    public let icon: NSImage?
+    public let systemFallback: String
+    public let planName: String
+    public let tierBadge: String?
+    public let email: String?
+    public let detail: String
+    public let launchHelp: String
+    public let onLaunch: () -> Void
+    public let onUpgrade: (() -> Void)?
+
+    public init(
+        provider: AIProvider,
+        icon: NSImage?,
+        systemFallback: String,
+        planName: String,
+        tierBadge: String? = nil,
+        email: String?,
+        detail: String,
+        launchHelp: String,
+        onLaunch: @escaping () -> Void,
+        onUpgrade: (() -> Void)?
+    ) {
+        self.provider = provider
+        self.icon = icon
+        self.systemFallback = systemFallback
+        self.planName = planName
+        self.tierBadge = tierBadge
+        self.email = email
+        self.detail = detail
+        self.launchHelp = launchHelp
+        self.onLaunch = onLaunch
+        self.onUpgrade = onUpgrade
+    }
+
+    private var tint: Color { LiquidGlassPalette.accent(for: provider) }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 11) {
+                ProviderIconBadge(icon: icon, systemFallback: systemFallback, tint: tint, size: 40)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(planName)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(LiquidGlassText.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        if let tierBadge = tierBadge {
+                            GlassChip(tierBadge, tint: tint)
+                        }
+                    }
+
+                    Text(provider.fullName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(LiquidGlassText.tertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if let email = email, !email.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(tint)
+                    Text(email)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(LiquidGlassText.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+            }
+
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundColor(LiquidGlassText.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                GlassCapsuleButton("Launch App", systemImage: "arrow.up.forward.app", size: .small, help: launchHelp, action: onLaunch)
+                Spacer(minLength: 0)
+                if let onUpgrade = onUpgrade {
+                    GlassCapsuleButton(
+                        "Upgrade",
+                        trailingSystemImage: "arrow.up.forward",
+                        style: .prominent(tint),
+                        size: .small,
+                        help: "Upgrade \(provider.displayName) subscription",
+                        action: onUpgrade
+                    )
+                }
+            }
+        }
+        .padding(14)
+        .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
+    }
+}
+
+// MARK: - Provider Icon Badge
+
+/// App icon set in a tinted glass squircle with a soft accent glow.
+public struct ProviderIconBadge: View {
+    public let icon: NSImage?
+    public let systemFallback: String
+    public let tint: Color
+    public let size: CGFloat
+
+    public init(icon: NSImage?, systemFallback: String, tint: Color, size: CGFloat) {
+        self.icon = icon
+        self.systemFallback = systemFallback
+        self.tint = tint
+        self.size = size
+    }
+
+    public var body: some View {
+        let radius = size * 0.26
+
+        ZStack {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.30), tint.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            if let icon = icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size * 0.66, height: size * 0.66)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.15, style: .continuous))
+            } else {
+                Image(systemName: systemFallback)
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundColor(tint)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.1), lineWidth: 1)
+        )
+        .shadow(color: tint.opacity(0.35), radius: size * 0.2, x: 0, y: size * 0.06)
+    }
+}
+
+// MARK: - Empty State
+
+/// Centered placeholder for disconnected or missing providers: haloed icon, title, message and actions.
+public struct GlassEmptyState<Actions: View>: View {
+    public let icon: NSImage?
+    public let systemFallback: String
+    public let tint: Color
+    public let title: String
+    public let message: String
+    public let actions: Actions
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    public init(
+        icon: NSImage?,
+        systemFallback: String,
+        tint: Color,
+        title: String,
+        message: String,
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.icon = icon
+        self.systemFallback = systemFallback
+        self.tint = tint
+        self.title = title
+        self.message = message
+        self.actions = actions()
+    }
+
+    public var body: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                // Concentric halo rings
+                ForEach(0..<3) { ring in
+                    Circle()
+                        .strokeBorder(tint.opacity(0.22 - Double(ring) * 0.06), lineWidth: 1)
+                        .frame(width: 84 + CGFloat(ring) * 24, height: 84 + CGFloat(ring) * 24)
+                }
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [tint.opacity(0.28), tint.opacity(0.0)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 70
+                        )
+                    )
+                    .frame(width: 140, height: 140)
+
+                Group {
+                    if reduceTransparency {
+                        Circle().fill(Color(NSColor.controlBackgroundColor))
+                    } else {
+                        Circle().fill(.thinMaterial)
+                    }
+                }
+                .frame(width: 72, height: 72)
+                .overlay(
+                    Circle()
+                        .strokeBorder(LiquidGlassTokens.specularBorder(isDark: true, intensity: 1.1), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.30), radius: 12, x: 0, y: 6)
+
+                if let icon = icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                } else {
+                    Image(systemName: systemFallback)
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundColor(tint)
+                }
+            }
+            .frame(height: 140)
+
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.primary)
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(LiquidGlassText.tertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28)
+            }
+
+            HStack(spacing: 10) {
+                actions
+            }
+        }
+        .padding(.vertical, 22)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Ambient Tint Bleed
+
+/// Soft provider-coloured light pooled behind the popover content (tint bleed through the glass).
+/// Gradients only, no blur, so it adds no offscreen passes. Hidden under Reduce Transparency.
+public struct AmbientTintBackground: View {
+    public let tint: Color
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    public init(tint: Color) {
+        self.tint = tint
+    }
+
+    public var body: some View {
+        if reduceTransparency {
+            Color.clear
+        } else {
+            ZStack {
+                RadialGradient(
+                    colors: [tint.opacity(0.22), tint.opacity(0.0)],
+                    center: UnitPoint(x: 0.12, y: 0.0),
+                    startRadius: 0,
+                    endRadius: 260
+                )
+                RadialGradient(
+                    colors: [tint.opacity(0.10), tint.opacity(0.0)],
+                    center: UnitPoint(x: 1.0, y: 0.85),
+                    startRadius: 0,
+                    endRadius: 220
+                )
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
