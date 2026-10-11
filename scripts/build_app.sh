@@ -43,7 +43,7 @@ cat << EOF > "$CONTENTS_DIR/Info.plist"
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.antigravity.aiusage</string>
+    <string>io.github.desmondlee95700.aiusage</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

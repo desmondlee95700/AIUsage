@@ -39,8 +39,12 @@ public struct GitHubRelease: Codable {
 public final class UpdateService: ObservableObject {
     public static let shared = UpdateService()
     
-    private let repoOwner = "desmondlee95700"
-    private let repoName = "AIUsage"
+    private static let repoOwner = "desmondlee95700"
+    private static let repoName = "AIUsage"
+    
+    /// GitHub hosts the updater may contact (AGENTS.md §6.3): the releases API, the release
+    /// download link, and the CDN that download redirects to.
+    static let allowedHosts: Set<String> = ["api.github.com", "github.com", "release-assets.githubusercontent.com"]
     
     @Published public var isChecking: Bool = false
     @Published public var isDownloading: Bool = false
@@ -53,7 +57,33 @@ public final class UpdateService: ObservableObject {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10.0
         config.timeoutIntervalForResource = 300.0
-        self.session = URLSession(configuration: config)
+        self.session = URLSession(configuration: config, delegate: RedirectPolicy(), delegateQueue: nil)
+    }
+    
+    // MARK: - Network Policy
+    
+    /// Release metadata comes from the API, so asset and page URLs are checked before use rather
+    /// than trusted: HTTPS, on github.com, and inside this repository's releases.
+    static func isTrustedReleaseURL(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host == "github.com" && url.path.hasPrefix("/\(repoOwner)/\(repoName)/releases/")
+    }
+    
+    static func isAllowedHost(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host.map(allowedHosts.contains) == true
+    }
+    
+    /// Only follows redirects that stay on `allowedHosts`. A refused redirect completes the
+    /// task with the 3xx response, which `saveDownload` rejects.
+    private final class RedirectPolicy: NSObject, URLSessionTaskDelegate {
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            completionHandler(request.url.map(UpdateService.isAllowedHost) == true ? request : nil)
+        }
     }
     
     // MARK: - Version Comparison
@@ -108,7 +138,7 @@ public final class UpdateService: ObservableObject {
         guard !isChecking else { return }
         isChecking = true
         
-        guard let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/\(Self.repoOwner)/\(Self.repoName)/releases/latest") else {
             isChecking = false
             return
         }
@@ -236,7 +266,7 @@ public final class UpdateService: ObservableObject {
         case .alertFirstButtonReturn:
             downloadAndInstallUpdate(release)
         case .alertSecondButtonReturn:
-            if let url = URL(string: release.htmlUrl) {
+            if let url = URL(string: release.htmlUrl), Self.isTrustedReleaseURL(url) {
                 NSWorkspace.shared.open(url)
             }
         case skipResponse:
@@ -250,9 +280,10 @@ public final class UpdateService: ObservableObject {
     
     public func downloadAndInstallUpdate(_ release: GitHubRelease) {
         guard let asset = release.dmgAsset,
-              let downloadURL = URL(string: asset.browserDownloadUrl) else {
+              let downloadURL = URL(string: asset.browserDownloadUrl),
+              Self.isTrustedReleaseURL(downloadURL) else {
             // Fallback to opening release page in browser
-            if let pageURL = URL(string: release.htmlUrl) {
+            if let pageURL = URL(string: release.htmlUrl), Self.isTrustedReleaseURL(pageURL) {
                 NSWorkspace.shared.open(pageURL)
             }
             return

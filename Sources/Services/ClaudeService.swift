@@ -291,11 +291,7 @@ public actor ClaudeService {
     public static func parseDate(_ val: Any?) -> Date? {
         guard let val = val else { return nil }
         if let str = val as? String, !str.isEmpty {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let d = formatter.date(from: str) { return d }
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter.date(from: str)
+            return DateParsing.iso8601(str)
         }
         if let num = val as? Double {
             return Date(timeIntervalSince1970: num > 1e11 ? num / 1000.0 : num)
