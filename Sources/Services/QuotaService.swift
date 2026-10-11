@@ -678,31 +678,11 @@ public class QuotaService: ObservableObject {
     // MARK: - Computed Properties for Helpers
     
     public var primaryWeeklyBucket: QuotaBucket? {
-        guard let groups = quotaSummary?.groups else { return nil }
-        let group = groups.first { $0.displayName.contains("Gemini") } ?? groups.first
-        return group?.buckets.first { bucket in
-            let window = bucket.window?.lowercased() ?? ""
-            let id = bucket.bucketId.lowercased()
-            let name = bucket.displayName.lowercased()
-            return window == "weekly" || window.contains("week") || id.contains("weekly") || name.contains("week")
-        }
+        quotaSummary?.primaryWeeklyBucket
     }
     
     public var primary5hBucket: QuotaBucket? {
-        guard let groups = quotaSummary?.groups else { return nil }
-        let group = groups.first { $0.displayName.contains("Gemini") } ?? groups.first
-        return group?.buckets.first { bucket in
-            let window = bucket.window?.lowercased() ?? ""
-            let id = bucket.bucketId.lowercased()
-            let name = bucket.displayName.lowercased()
-            return window == "5h" ||
-                   window.contains("5h") ||
-                   id.contains("5h") ||
-                   name.contains("5h") ||
-                   name.contains("5 hour") ||
-                   name.contains("5-hour") ||
-                   window.contains("hour")
-        } ?? group?.buckets.first { $0.window != "weekly" && !$0.bucketId.contains("weekly") }
+        quotaSummary?.primary5hBucket
     }
     
     /// Returns Antigravity quota percentage (prioritizes 5-hour limit on the menu bar)
@@ -732,13 +712,7 @@ public class QuotaService: ObservableObject {
     
     /// The active window for menu bar display (prioritizes 5h rolling limit, then weekly limit, then primary)
     public var codexActiveWindow: CodexRateLimitWindow? {
-        if let short = codex5hWindow {
-            return short
-        }
-        if let weekly = codexWeeklyWindow {
-            return weekly
-        }
-        return codexPrimaryWindow ?? codexSecondaryWindow
+        codexSnapshot?.activeWindow
     }
     
     public var codexRemainingPercentage: Int {
@@ -757,17 +731,15 @@ public class QuotaService: ObservableObject {
     
     /// Menu bar percentage for Claude: the 5-hour window when reported, else the weekly one.
     public var claudePercentage: Int? {
-        claude5hPercentage ?? claudeWeeklyPercentage
+        claudeLimits?.menuBarPercent
     }
     
     public var claudeWeeklyPercentage: Int? {
-        guard let limits = claudeLimits, limits.hasWeeklyWindow else { return nil }
-        return limits.weeklyRemainingPercent
+        claudeLimits?.weeklyPercent
     }
     
     public var claude5hPercentage: Int? {
-        guard let limits = claudeLimits, limits.hasFiveHourWindow else { return nil }
-        return limits.fiveHourRemainingPercent
+        claudeLimits?.fiveHourPercent
     }
     
     // MARK: - Menu Bar Formatter Helpers
