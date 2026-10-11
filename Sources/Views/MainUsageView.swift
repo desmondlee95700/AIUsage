@@ -317,9 +317,17 @@ public struct MainUsageView: View {
                     Text(mode.title).tag(mode)
                 }
             }
-            Picker("Low-Quota Alerts", selection: $service.alertMode) {
-                ForEach(LowQuotaAlertMode.allCases, id: \.self) { mode in
-                    Text(mode.title).tag(mode)
+            Menu("Low-Quota Alerts") {
+                Picker("Low-Quota Alerts", selection: $service.alertMode) {
+                    ForEach(LowQuotaAlertMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                Divider()
+                Button("Send Test Notification") {
+                    NotificationManager.shared.sendTestNotification()
                 }
             }
             Toggle("Hide Email Addresses", isOn: $hideEmails)

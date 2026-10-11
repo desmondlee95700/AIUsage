@@ -374,6 +374,10 @@ public class StatusBarController {
             item.target = self
             alertsMenu.addItem(item)
         }
+        alertsMenu.addItem(NSMenuItem.separator())
+        let testItem = NSMenuItem(title: "Send Test Notification", action: #selector(sendTestNotificationAction), keyEquivalent: "")
+        testItem.target = self
+        alertsMenu.addItem(testItem)
         let alertsSubItem = NSMenuItem(title: "Low-Quota Alerts", action: nil, keyEquivalent: "")
         alertsSubItem.image = NSImage(systemSymbolName: "bell.badge", accessibilityDescription: "Low-Quota Alerts")
         alertsSubItem.submenu = alertsMenu
@@ -483,6 +487,10 @@ public class StatusBarController {
         if let raw = sender.representedObject as? String, let mode = LowQuotaAlertMode(rawValue: raw) {
             service.alertMode = mode
         }
+    }
+    
+    @objc private func sendTestNotificationAction() {
+        NotificationManager.shared.sendTestNotification()
     }
     
     @objc private func toggleHideEmailsAction() {
