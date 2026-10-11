@@ -129,7 +129,8 @@ public struct ClaudeQuotaCardView: View {
                         color: LiquidGlassPalette.moderate,
                         title: "Limits Unavailable",
                         // Either source can fail: claude.ai rate-limits or the session lapses, or Claude Code's sign-in expires
-                        message: "Couldn't fetch your 5-hour and weekly limits. Claude may be limiting requests, or a sign-in needs refreshing: opening Claude or Claude Code usually fixes it. AIUsage keeps retrying."
+                        message: "Couldn't fetch your 5-hour and weekly limits. Claude may be limiting requests, "
+                            + "or a sign-in needs refreshing: opening Claude or Claude Code usually fixes it. AIUsage keeps retrying."
                     )
                 } else {
                     notice(

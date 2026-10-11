@@ -113,9 +113,13 @@ public struct MainUsageView: View {
     /// Room left on screen for the header, provider switcher, popover arrow and a margin.
     private static let reservedScreenHeight: CGFloat = 150
     
-    /// Content height, shrunk on small displays so the popover never runs past the bottom of the screen
+    /// Content height, shrunk on small displays so the popover never runs past the bottom of the screen.
+    /// Measured on the screen under the pointer: the popover opens from a click on the status item,
+    /// and NSScreen.main follows the key window, which can be on another display.
     private var contentHeight: CGFloat {
-        guard let visible = NSScreen.main?.visibleFrame.height else { return Self.preferredContentHeight }
+        let pointer = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame.height else { return Self.preferredContentHeight }
         return max(320, min(Self.preferredContentHeight, visible - Self.reservedScreenHeight))
     }
 
@@ -374,7 +378,7 @@ public struct MainUsageView: View {
         case .notDetermined, .unknown:
             Text("Notifications: Not Set Up")
             Button("Turn On Notifications") {
-                NotificationManager.shared.requestAuthorization()
+                service.turnOnAlerts()
             }
         case .denied:
             Text("Notifications: Blocked")
@@ -430,7 +434,7 @@ public struct MainUsageView: View {
             case .setUp:
                 // "Not Now" turns alerts off: that's what declining means, and it can be undone from the menu
                 AlertsOnboardingCard(
-                    onTurnOn: { NotificationManager.shared.requestAuthorization() },
+                    onTurnOn: { service.turnOnAlerts() },
                     onDismiss: turnOffAlerts
                 )
             case .blocked:

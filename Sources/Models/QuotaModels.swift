@@ -51,12 +51,7 @@ public struct QuotaSummaryData: Codable {
     
     /// The primary group's weekly bucket, matched by window, id or name.
     public var primaryWeeklyBucket: QuotaBucket? {
-        primaryGroup?.buckets.first { bucket in
-            let window = bucket.window?.lowercased() ?? ""
-            let id = bucket.bucketId.lowercased()
-            let name = bucket.displayName.lowercased()
-            return window == "weekly" || window.contains("week") || id.contains("weekly") || name.contains("week")
-        }
+        primaryGroup?.buckets.first(where: \.isWeekly)
     }
     
     /// The primary group's 5-hour bucket, falling back to its first non-weekly bucket.
@@ -73,16 +68,21 @@ public struct QuotaSummaryData: Codable {
                    name.contains("5 hour") ||
                    name.contains("5-hour") ||
                    window.contains("hour")
-        } ?? group?.buckets.first { $0.window != "weekly" && !$0.bucketId.contains("weekly") }
+        } ?? group?.buckets.first { !$0.isWeekly }
     }
 
     /// The bucket shown in the menu bar: of the primary group's 5-hour and weekly buckets, the one
     /// with the least quota left. Buckets without a reported fraction are skipped, so this is nil
     /// rather than a misleading 0% when there's no data.
     public var bindingBucket: QuotaBucket? {
-        [primary5hBucket, primaryWeeklyBucket]
-            .compactMap { $0 }
-            .filter { $0.remainingFraction != nil }
+        [primary5hBucket, primaryWeeklyBucket].compactMap { $0 }.lowestRemaining
+    }
+}
+
+extension Sequence where Element == QuotaBucket {
+    /// The bucket with the least quota left, skipping buckets that report no fraction.
+    public var lowestRemaining: QuotaBucket? {
+        filter { $0.remainingFraction != nil }
             .min { ($0.remainingFraction ?? 1) < ($1.remainingFraction ?? 1) }
     }
 }
@@ -132,6 +132,13 @@ public struct QuotaBucket: Codable, Identifiable {
     
     public var resetDate: Date? {
         resetTime.flatMap(DateParsing.iso8601)
+    }
+    
+    /// Weekly window, matched case-insensitively by window, id or name. Shared by the weekly
+    /// lookup and the 5-hour fallback so the two can never pick the same bucket.
+    public var isWeekly: Bool {
+        let window = self.window?.lowercased() ?? ""
+        return window.contains("week") || bucketId.lowercased().contains("weekly") || displayName.lowercased().contains("week")
     }
 }
 
@@ -485,6 +492,8 @@ public struct CodexDailyUsageBucket: Codable, Identifiable {
 // MARK: - App Preferences
 
 public enum MenuBarDisplayMode: String, CaseIterable, Codable {
+    public static let storageKey = "menuBarDisplayMode"
+    
     /// Each selected provider's icon and lowest remaining limit
     case percentages = "Percentages"
     /// Provider icons only, for a quieter or more private menu bar

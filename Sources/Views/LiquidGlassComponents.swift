@@ -322,7 +322,7 @@ public struct NotificationsBlockedStrip: View {
 /// matched to its window without comparing numbers.
 /// Hidden in icon-only mode, where the menu bar shows no figures.
 public struct MenuBarMarker: View {
-    @AppStorage("menuBarDisplayMode") private var displayMode = MenuBarDisplayMode.percentages.rawValue
+    @AppStorage(MenuBarDisplayMode.storageKey) private var displayMode = MenuBarDisplayMode.percentages.rawValue
 
     public init() {}
 
@@ -344,7 +344,9 @@ public struct MenuBarMarker: View {
 public struct OverflowScrollView<Content: View>: View {
     public let content: Content
 
-    @State private var hiddenBelow: CGFloat = 0
+    /// Only whether content continues below matters, so that's all that's stored: tracking the
+    /// exact distance would write state on every scroll frame
+    @State private var hasMoreBelow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static var spaceName: String { "OverflowScrollView" }
@@ -354,8 +356,6 @@ public struct OverflowScrollView<Content: View>: View {
     public init(@ViewBuilder content: () -> Content) {
         self.content = content()
     }
-
-    private var hasMoreBelow: Bool { hiddenBelow > 8 }
 
     public var body: some View {
         GeometryReader { viewport in
@@ -396,9 +396,9 @@ public struct OverflowScrollView<Content: View>: View {
     }
 
     private func updateHiddenBelow(contentMaxY: CGFloat, viewportHeight: CGFloat) {
-        let below = max(0, contentMaxY - viewportHeight)
-        if (below > 8) != hasMoreBelow || abs(below - hiddenBelow) > 1 {
-            hiddenBelow = below
+        let moreBelow = contentMaxY - viewportHeight > 8
+        if moreBelow != hasMoreBelow {
+            hasMoreBelow = moreBelow
         }
     }
 

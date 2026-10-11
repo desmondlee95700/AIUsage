@@ -167,7 +167,7 @@ public class QuotaService: ObservableObject {
     // User preferences
     @Published public var displayMode: MenuBarDisplayMode {
         didSet {
-            UserDefaults.standard.set(displayMode.rawValue, forKey: "menuBarDisplayMode")
+            UserDefaults.standard.set(displayMode.rawValue, forKey: MenuBarDisplayMode.storageKey)
             updateMenuBarCallback?()
         }
     }
@@ -236,7 +236,7 @@ public class QuotaService: ObservableObject {
             self.dualActiveProvider = first
         }
         
-        self.displayMode = MenuBarDisplayMode(savedValue: UserDefaults.standard.string(forKey: "menuBarDisplayMode"))
+        self.displayMode = MenuBarDisplayMode(savedValue: UserDefaults.standard.string(forKey: MenuBarDisplayMode.storageKey))
         self.alertMode = UserDefaults.standard.string(forKey: LowQuotaAlertMode.storageKey)
             .flatMap(LowQuotaAlertMode.init(rawValue:)) ?? .all
         
@@ -396,10 +396,7 @@ public class QuotaService: ObservableObject {
         // least left. Alerting per bucket sent several notifications for a single session.
         if isGeminiConnected && selectedProviders.contains(.gemini) {
             for group in quotaSummary?.groups ?? [] {
-                let lowest = group.buckets
-                    .filter { $0.remainingFraction != nil }
-                    .min { ($0.remainingFraction ?? 1) < ($1.remainingFraction ?? 1) }
-                guard let bucket = lowest else { continue }
+                guard let bucket = group.buckets.lowestRemaining else { continue }
                 let window = (bucket.window ?? bucket.bucketId).lowercased()
                 let windowDesc = window.contains("week") ? "weekly limit"
                     : (window.contains("5h") || window.contains("hour")) ? "5-hour limit"
@@ -428,6 +425,13 @@ public class QuotaService: ObservableObject {
         
         // Mark baselines as initialized so subsequent refreshes only alert upon active quota drop
         alertTracker.finishBaseline()
+    }
+    
+    /// Turns low-quota alerts on and asks for notification permission. Used by every "turn on"
+    /// control, so granting permission never leaves alerts switched off (e.g. after "Not Now").
+    public func turnOnAlerts() {
+        if alertMode == .off { alertMode = .all }
+        NotificationManager.shared.requestAuthorization()
     }
     
     private func evaluateQuotaAlert(provider: String, windowName: String, keySuffix: String, remainingPercent: Int, resetDate: Date?) {
@@ -644,8 +648,9 @@ public class QuotaService: ObservableObject {
             guard let binding = quotaSummary?.bindingBucket, let weekly = primaryWeeklyBucket else { return false }
             return binding.bucketId == weekly.bucketId && primary5hBucket?.bucketId != weekly.bucketId
         case .chatgpt:
+            // Same 6–10 day range as CodexRateLimitSnapshot.weeklyWindow, so 30-day windows aren't called weekly
             guard let mins = codexSnapshot?.bindingWindow?.windowDurationMins else { return false }
-            return mins >= 6 * 1440
+            return (6 * 1440...10 * 1440).contains(mins)
         case .claude:
             return claudeLimits?.isWeeklyBinding ?? false
         }

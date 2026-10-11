@@ -57,6 +57,20 @@ final class QuotaSelectionTests: XCTestCase {
         XCTAssertEqual(data.primary5hBucket?.bucketId, "daily")
     }
 
+    func testUppercaseWeeklyBucketIsNotAlsoTheFiveHourBucket() {
+        // The 5-hour fallback used to compare the window case-sensitively and could pick the weekly bucket
+        let data = summary([("Gemini", [bucket("quota_wk", name: "Quota", window: "WEEKLY", fraction: 0.2)])])
+        XCTAssertNil(data.primary5hBucket)
+        XCTAssertEqual(data.primaryWeeklyBucket?.bucketId, "quota_wk")
+        XCTAssertEqual(data.bindingBucket?.bucketId, "quota_wk")
+    }
+
+    func testLowestRemainingSkipsBucketsWithoutData() {
+        let buckets = [bucket("a", name: "A", fraction: nil), bucket("b", name: "B", fraction: 0.6), bucket("c", name: "C", fraction: 0.3)]
+        XCTAssertEqual(buckets.lowestRemaining?.bucketId, "c")
+        XCTAssertNil([bucket("a", name: "A", fraction: nil)].lowestRemaining)
+    }
+
     func testOnlyWeeklyBucketHasNoFiveHourBucket() {
         let data = summary([("Gemini", [bucket("quota_weekly", name: "Weekly", window: "weekly")])])
         XCTAssertNil(data.primary5hBucket)

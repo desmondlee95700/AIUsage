@@ -10,6 +10,9 @@ public enum NotificationPermission: Equatable {
     case authorized
 }
 
+/// Main-actor isolated: `permission` drives SwiftUI, so it only ever changes on the main thread.
+/// Notification Center is called through its async APIs, which hop off and back automatically.
+@MainActor
 public class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     public static let shared = NotificationManager()
     
@@ -25,36 +28,43 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
         refreshPermission()
     }
     
-    public func refreshPermission() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            let permission: NotificationPermission
-            switch settings.authorizationStatus {
-            case .notDetermined: permission = .notDetermined
-            case .denied: permission = .denied
-            default: permission = .authorized
-            }
-            DispatchQueue.main.async {
-                if self?.permission != permission { self?.permission = permission }
-            }
+    /// Re-reads the permission from Notification Center; `completion` runs once `permission` is current.
+    public func refreshPermission(completion: (() -> Void)? = nil) {
+        Task {
+            await updatePermission()
+            completion?()
         }
     }
     
+    private func updatePermission() async {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        let current: NotificationPermission
+        switch status {
+        case .notDetermined: current = .notDetermined
+        case .denied: current = .denied
+        default: current = .authorized
+        }
+        if permission != current { permission = current }
+    }
+    
     public func requestAuthorization(completion: ((Bool) -> Void)? = nil) {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
-            // NSLog rather than print: a menu bar app's stdout goes nowhere, but this shows in Console
-            if let error = error {
+        Task {
+            let granted: Bool
+            do {
+                granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                // NSLog rather than print: a menu bar app's stdout goes nowhere, but this shows in Console
+                if !granted { NSLog("AIUsage: notification permission not granted") }
+            } catch {
                 NSLog("AIUsage: notification authorization error: %@", error.localizedDescription)
-            } else if !granted {
-                NSLog("AIUsage: notification permission not granted")
+                granted = false
             }
-            self?.refreshPermission()
+            await updatePermission()
             completion?(granted)
         }
     }
     
     /// Opens AIUsage's page in System Settings › Notifications, for users who declined the prompt.
-    public static func openNotificationSettings() {
+    public nonisolated static func openNotificationSettings() {
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleId)")
             ?? URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
@@ -62,25 +72,21 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
     }
     
     public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil, resetDate: Date? = nil) {
-        let center = UNUserNotificationCenter.current()
-        
-        center.getNotificationSettings { [weak self] settings in
-            // This runs from background quota checks, so respect a denial silently
-            // rather than popping open System Settings unprompted.
-            if settings.authorizationStatus == .denied {
+        Task {
+            switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+            case .denied:
+                // This runs from background quota checks, so respect a denial silently
+                // rather than popping open System Settings unprompted.
                 return
-            }
-            
-            if settings.authorizationStatus == .notDetermined {
-                self?.requestAuthorization { granted in
+            case .notDetermined:
+                requestAuthorization { [weak self] granted in
                     if granted {
                         self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
                     }
                 }
-                return
+            default:
+                postNotification(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
             }
-            
-            self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
         }
     }
     
@@ -117,8 +123,10 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
             trigger: nil
         )
         
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+            } catch {
                 NSLog("AIUsage: failed to deliver notification: %@", error.localizedDescription)
             }
         }
@@ -126,7 +134,7 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
     
     /// "25% of your 5-hour limit left on ChatGPT. Resets in 2h 10m." The reset time is the
     /// next thing you'd want to know, so it's included whenever the provider reports one.
-    static func lowQuotaBody(provider: String, remainingQuota: String, window: String?, resetDate: Date?, now: Date = Date()) -> String {
+    nonisolated static func lowQuotaBody(provider: String, remainingQuota: String, window: String?, resetDate: Date?, now: Date = Date()) -> String {
         var body: String
         if let window = window, !window.isEmpty {
             body = "\(remainingQuota) of your \(window) left on \(provider)."
@@ -139,8 +147,9 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
         return body
     }
     
-    // Present banner directly even when app is active
-    public func userNotificationCenter(
+    // Present banner directly even when app is active. Called by Notification Center on its own
+    // queue and touches no state, so it's exempt from main-actor isolation.
+    public nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
