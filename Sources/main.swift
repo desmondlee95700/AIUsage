@@ -4,6 +4,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard BundleIdentity.claimSingleInstance() else {
+            NSApp.terminate(nil)
+            return
+        }
+        // Before anything reads settings (QuotaService.shared reads them on first use)
+        BundleIdentity.migrateLegacyDefaults()
+        
         // Ensure menu bar accessory mode (no Dock icon)
         NSApp.setActivationPolicy(.accessory)
         

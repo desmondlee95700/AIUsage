@@ -114,15 +114,7 @@ public struct QuotaBucket: Codable, Identifiable {
         }
         guard let resetTime = resetTime else { return nil }
         
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var targetDate = formatter.date(from: resetTime)
-        if targetDate == nil {
-            formatter.formatOptions = [.withInternetDateTime]
-            targetDate = formatter.date(from: resetTime)
-        }
-        
-        guard let target = targetDate else { return nil }
+        guard let target = DateParsing.iso8601(resetTime) else { return nil }
         let diff = target.timeIntervalSince(Date())
         if diff <= 0 {
             return "Refreshes soon"
@@ -326,10 +318,7 @@ public struct CodexRateLimitWindow: Codable {
         if diff <= 0 {
             return "Refreshes soon"
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM yyyy 'at' h:mm a"
-        return "Resets \(formatter.string(from: resetDate))"
+        return "Resets \(DateParsing.resetDate.string(from: resetDate))"
     }
 }
 
@@ -396,8 +385,7 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
             if let val = Int(str) {
                 self.expiresAt = val
             } else {
-                let isoFormatter = ISO8601DateFormatter()
-                if let d = isoFormatter.date(from: str) {
+                if let d = DateParsing.iso8601(str) {
                     self.expiresAt = Int(d.timeIntervalSince1970)
                 } else {
                     self.expiresAt = nil
@@ -436,11 +424,7 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
         if diff <= 0 {
             return "Expired"
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM yyyy 'at' h:mm a"
-        let dateStr = formatter.string(from: date)
-        return "Resets \(dateStr)"
+        return "Resets \(DateParsing.resetDate.string(from: date))"
     }
 }
 

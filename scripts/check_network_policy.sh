@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # Fails if any URL host referenced in Sources/ is outside the allowlist in AGENTS.md §6.3.
+# Only literal URLs are visible here; hosts that arrive in API responses (update downloads)
+# are enforced at runtime by UpdateService.allowedHosts.
 # Adding a host here requires repository owner approval.
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,6 +14,8 @@ ALLOWED_HOSTS=(
     "claude.ai"          # Claude usage endpoints (desktop session) + browser fallback link
     "api.anthropic.com"  # Claude Code OAuth usage endpoint
     "api.github.com"     # In-app update check
+    "github.com"         # Update DMG download link (release assets of this repo only)
+    "release-assets.githubusercontent.com"  # CDN that GitHub redirects release downloads to
     "chatgpt.com"        # Browser fallback link only (no data requests)
 )
 

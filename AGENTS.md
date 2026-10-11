@@ -159,7 +159,7 @@ To maintain codebase stability, security, and strict quality control:
      - **ChatGPT**: the bundled Codex CLI `app-server` subprocess.
      - **Claude**: read-only usage endpoints on `claude.ai` (using the Claude desktop session cookie) and `api.anthropic.com/api/oauth/usage` (using the Claude Code OAuth token).
      - **Token activity**: local session logs only (`~/.claude/projects`, `~/.codex/sessions`); file reads, no network.
-     - **Updates**: the GitHub Releases API for this repository.
+     - **Updates**: the GitHub Releases API for this repository (`api.github.com`), and the release DMG download (`github.com`, redirecting to `release-assets.githubusercontent.com`). `UpdateService` refuses download URLs outside this repository's releases and redirects to any other host.
      - **Browser links** (opened in the user's browser, no data requests): `claude.ai`, `chatgpt.com`.
    - Credentials are read from the local Keychain or cookie store at request time. They are never persisted, logged, or sent anywhere other than the provider's own HTTPS endpoint.
    - Adding a new network destination requires explicit approval from the repository owner. `scripts/check_network_policy.sh` enforces the allowlist in CI.

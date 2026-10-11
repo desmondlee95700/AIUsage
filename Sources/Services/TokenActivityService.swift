@@ -135,16 +135,8 @@ public final class TokenActivityService: @unchecked Sendable {
 
     // MARK: - Parsing
 
-    private static let isoFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let isoFormatterNoFraction = ISO8601DateFormatter()
-
     static func parseTimestamp(_ string: String) -> Date? {
-        isoFormatter.date(from: string) ?? isoFormatterNoFraction.date(from: string)
+        DateParsing.iso8601(string)
     }
 
     /// Splits JSONL into lines and decodes only those containing `marker`, skipping the
