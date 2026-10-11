@@ -102,14 +102,17 @@ public struct ChatGPTQuotaCardView: View {
                         .padding(14)
                 } else {
                     let items = windows
-                    QuotaTileGrid(count: items.count) { index in
-                        let item = items[index]
-                        QuotaTile(
-                            title: item.title,
-                            caption: "\(item.window.usedPercent)% used · \(item.window.formattedDuration)",
-                            fraction: item.window.remainingFraction,
-                            resetText: item.window.formattedResetCountdown
-                        )
+                    // Re-render periodically so the reset countdowns tick between refreshes
+                    TimelineView(.periodic(from: .now, by: LiquidGlassTokens.countdownTick)) { _ in
+                        QuotaTileGrid(count: items.count) { index in
+                            let item = items[index]
+                            QuotaTile(
+                                title: item.title,
+                                caption: "\(item.window.usedPercent)% used · \(item.window.formattedDuration)",
+                                fraction: item.window.remainingFraction,
+                                resetText: item.window.formattedResetCountdown
+                            )
+                        }
                     }
                     .padding(8)
                 }

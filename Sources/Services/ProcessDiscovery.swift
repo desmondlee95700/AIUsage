@@ -8,11 +8,14 @@ public struct DiscoveredServer: Equatable {
     public let sourceName: String
 }
 
+/// Accepts the Antigravity language server's self-signed certificate. Trust is only bypassed
+/// for the loopback address; any other host gets the system's normal certificate validation.
 public final class InsecureTrustDelegate: NSObject, URLSessionDelegate {
     public static let shared = InsecureTrustDelegate()
     
     public func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           challenge.protectionSpace.host == "127.0.0.1",
            let trust = challenge.protectionSpace.serverTrust {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {

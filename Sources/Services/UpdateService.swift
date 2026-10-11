@@ -265,45 +265,74 @@ public final class UpdateService: ObservableObject {
         let destinationURL = downloadsDir.appendingPathComponent("AIUsage-\(release.tagName).dmg")
         
         let task = session.downloadTask(with: downloadURL) { [weak self] tempURL, response, error in
+            // URLSession deletes tempURL once this handler returns, so validate and move it
+            // here rather than after hopping to the main queue.
+            let failure = Self.saveDownload(
+                tempURL: tempURL, response: response, error: error,
+                expectedSize: asset.size, to: destinationURL
+            )
+
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isDownloading = false
-                
-                if let error = error {
-                    self.downloadErrorMessage = error.localizedDescription
-                    self.showErrorAlert(message: "Failed to download update: \(error.localizedDescription)")
+
+                if let failure = failure {
+                    self.downloadErrorMessage = failure
+                    self.showErrorAlert(message: failure)
                     return
                 }
-                
-                guard let tempURL = tempURL else {
-                    self.showErrorAlert(message: "Downloaded update file not found.")
-                    return
+
+                // Open the downloaded DMG directly in Finder
+                NSWorkspace.shared.open(destinationURL)
+
+                let completionAlert = NSAlert()
+                completionAlert.messageText = "Update Download Complete!"
+                completionAlert.informativeText = "The installer (AIUsage-\(release.tagName).dmg) has been opened from your Downloads folder. Drag AIUsage into Applications to finish updating."
+                completionAlert.alertStyle = .informational
+                if let icon = AppIconHelper.appIconImage {
+                    completionAlert.icon = icon
                 }
-                
-                do {
-                    if FileManager.default.fileExists(atPath: destinationURL.path) {
-                        try FileManager.default.removeItem(at: destinationURL)
-                    }
-                    try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-                    
-                    // Open the downloaded DMG directly in Finder
-                    NSWorkspace.shared.open(destinationURL)
-                    
-                    let completionAlert = NSAlert()
-                    completionAlert.messageText = "Update Download Complete!"
-                    completionAlert.informativeText = "The installer (AIUsage-\(release.tagName).dmg) has been opened from your Downloads folder. Drag AIUsage into Applications to finish updating."
-                    completionAlert.alertStyle = .informational
-                    if let icon = AppIconHelper.appIconImage {
-                        completionAlert.icon = icon
-                    }
-                    completionAlert.addButton(withTitle: "OK")
-                    _ = self.runFrontmost(completionAlert)
-                } catch {
-                    self.showErrorAlert(message: "Could not save DMG installer: \(error.localizedDescription)")
-                }
+                completionAlert.addButton(withTitle: "OK")
+                _ = self.runFrontmost(completionAlert)
             }
         }
         task.resume()
+    }
+
+    /// Validates a finished download and moves it to `destination`. Returns a user-facing
+    /// error message, or nil on success. Must run inside the download task's completion handler.
+    static func saveDownload(
+        tempURL: URL?,
+        response: URLResponse?,
+        error: Error?,
+        expectedSize: Int?,
+        to destination: URL
+    ) -> String? {
+        if let error = error {
+            return "Failed to download update: \(error.localizedDescription)"
+        }
+        // A 404 or rate-limit page must never be saved and opened as the installer
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            return "Failed to download update: GitHub returned HTTP \(http.statusCode)."
+        }
+        guard let tempURL = tempURL else {
+            return "Downloaded update file not found."
+        }
+        let fm = FileManager.default
+        if let expected = expectedSize, expected > 0,
+           let actual = (try? fm.attributesOfItem(atPath: tempURL.path))?[.size] as? Int,
+           actual != expected {
+            return "The downloaded installer is incomplete (\(actual) of \(expected) bytes). Please try again."
+        }
+        do {
+            if fm.fileExists(atPath: destination.path) {
+                try fm.removeItem(at: destination)
+            }
+            try fm.moveItem(at: tempURL, to: destination)
+            return nil
+        } catch {
+            return "Could not save DMG installer: \(error.localizedDescription)"
+        }
     }
     
     private func showUpToDateAlert() {

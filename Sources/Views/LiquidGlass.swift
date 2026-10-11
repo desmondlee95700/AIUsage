@@ -41,6 +41,9 @@ public enum LiquidGlassTokens {
     // Viscous Fluid Springs (design-tokens.md §4)
     public static let interactiveSpring = Animation.spring(response: 0.28, dampingFraction: 0.65, blendDuration: 0.15)
     public static let hoverSpring = Animation.spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.20)
+
+    /// How often reset countdowns re-render while visible (seconds); they show minute precision.
+    public static let countdownTick: TimeInterval = 30
     public static let stateSpring = Animation.spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0.25)
     public static let metricSpring = Animation.spring(response: 0.50, dampingFraction: 0.70, blendDuration: 0.30)
 
