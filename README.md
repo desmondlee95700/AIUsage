@@ -129,7 +129,6 @@ A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure you
 | — | **Low-Quota Alerts** | At 30% and 10% (default), at 10% only, or off, plus whether notifications are allowed and a one-click fix if not. |
 | — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
 | — | **Hide Email Addresses** | Masks account emails in the popover, for screenshots and screen sharing. |
-| — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |
 
 ---
 

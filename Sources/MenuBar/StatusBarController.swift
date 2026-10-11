@@ -375,41 +375,13 @@ public class StatusBarController {
         
         menu.addItem(NSMenuItem.separator())
         
-        // App: startup and the provider apps
+        // App
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLoginAction), keyEquivalent: "")
         loginItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Launch at Login")
         // Pending approval in System Settings shows as mixed until the user allows it
         loginItem.state = LaunchAtLogin.isEnabled ? .on : (LaunchAtLogin.requiresApproval ? .mixed : .off)
         loginItem.target = self
         menu.addItem(loginItem)
-        
-        // Open App: launch a provider app
-        if service.isGeminiInstalled || service.isCodexInstalled || service.isClaudeInstalled {
-            let launchMenu = NSMenu()
-            if service.isGeminiInstalled {
-                let item = NSMenuItem(title: "Antigravity", action: #selector(launchAntigravityAction), keyEquivalent: "")
-                item.image = AppIconHelper.antigravityTemplate
-                item.target = self
-                launchMenu.addItem(item)
-            }
-            if service.isCodexInstalled {
-                let item = NSMenuItem(title: "ChatGPT", action: #selector(launchChatGPTAction), keyEquivalent: "")
-                item.image = AppIconHelper.chatgptTemplate
-                item.target = self
-                launchMenu.addItem(item)
-            }
-            if service.isClaudeInstalled {
-                let item = NSMenuItem(title: "Claude", action: #selector(launchClaudeAction), keyEquivalent: "")
-                item.image = AppIconHelper.claudeTemplate
-                item.target = self
-                launchMenu.addItem(item)
-            }
-            
-            let launchSubItem = NSMenuItem(title: "Open App", action: nil, keyEquivalent: "")
-            launchSubItem.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: "Open App")
-            launchSubItem.submenu = launchMenu
-            menu.addItem(launchSubItem)
-        }
         
         menu.addItem(NSMenuItem.separator())
         
@@ -493,18 +465,6 @@ public class StatusBarController {
     
     @objc private func checkForUpdatesAction() {
         UpdateService.shared.checkForUpdates(isUserInitiated: true)
-    }
-    
-    @objc private func launchAntigravityAction() {
-        ProcessDiscovery.launchAntigravityApp()
-    }
-    
-    @objc private func launchChatGPTAction() {
-        CodexDiscovery.launchChatGPTApp()
-    }
-    
-    @objc private func launchClaudeAction() {
-        ClaudeDiscovery.launchClaudeApp()
     }
     
     @objc private func changeRefreshIntervalAction(_ sender: NSMenuItem) {
