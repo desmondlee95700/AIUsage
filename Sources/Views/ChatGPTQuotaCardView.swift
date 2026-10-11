@@ -71,14 +71,21 @@ public struct ChatGPTQuotaCardView: View {
         }
         .alert(isPresented: $showingConfirmAlert) {
             Alert(
-                title: Text("Use Usage Limit Reset?"),
-                message: Text("This will consume 1 reset credit to restore your 5-hour limit and weekly limit.\n\nResets are provided by OpenAI and expire after their set validity period."),
+                title: Text("Use a Reset Credit?"),
+                message: Text(resetConfirmationMessage),
                 primaryButton: .default(Text("Use Reset")) {
                     service.consumeCodexReset()
                 },
                 secondaryButton: .cancel()
             )
         }
+    }
+    
+    /// Says what's left right now, so a reset isn't spent on limits that are nearly full.
+    private var resetConfirmationMessage: String {
+        let levels = windows.map { "\($0.window.remainingPercent)% of your \($0.title.lowercased())" }
+        let current = levels.isEmpty ? "" : "You have \(levels.joined(separator: " and ")) left.\n\n"
+        return current + "This uses 1 reset credit to restore your ChatGPT rate limits now. It can't be undone."
     }
     
     // MARK: - Quota Section
@@ -199,7 +206,7 @@ public struct ChatGPTQuotaCardView: View {
             }
             
             VStack(alignment: .leading, spacing: 10) {
-                Text("Use a reset to restore your 5-hour limit, weekly limit, or both.")
+                Text("A reset restores your rate limits immediately. Credits expire, so use them before they lapse.")
                     .font(.system(size: 11))
                     .foregroundColor(LiquidGlassText.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -211,7 +218,7 @@ public struct ChatGPTQuotaCardView: View {
                         }
                     } else {
                         ForEach(0..<resets.availableCount, id: \.self) { _ in
-                            resetCreditItem(title: "Reset Available", subtitle: "Ready to use")
+                            resetCreditItem(title: "Rate limit reset", subtitle: "Ready to use")
                         }
                     }
                 }

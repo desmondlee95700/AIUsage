@@ -77,7 +77,7 @@ final class CodexModelTests: XCTestCase {
             #"{"creditId": "c1", "resetType": "codex_rate_limits", "expiresAt": 1791000000}"#.utf8))
         XCTAssertEqual(camel.creditId, "c1")
         XCTAssertEqual(camel.expiresAt, 1_791_000_000)
-        XCTAssertEqual(camel.formattedResetType, "Resets Available")
+        XCTAssertEqual(camel.formattedResetType, "Rate limit reset")
 
         let snake = try JSONDecoder().decode(CodexRateLimitResetCredit.self, from: Data(
             #"{"credit_id": "c2", "reset_type": "custom", "expires_at": 1791000000}"#.utf8))

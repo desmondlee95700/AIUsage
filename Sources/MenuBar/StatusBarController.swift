@@ -174,25 +174,40 @@ public class StatusBarController {
         let iconSize: CGFloat = 14.0
         let height: CGFloat = 18.0
         
+        // Critical quota gets a warning glyph; the image stays a template so it follows the menu bar's appearance
+        let warningSize: CGFloat = 11.0
+        let warningGlyph = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9.5, weight: .bold))
+        
         struct ProviderRenderItem {
             let provider: AIProvider
             let icon: NSImage?
             let text: NSAttributedString
+            /// Disconnected or without data: drawn faded so live figures stand out
+            let isDimmed: Bool
+            let isCritical: Bool
             var iconWidth: CGFloat { icon != nil ? 14.0 : 0 }
             var textWidth: CGFloat { text.size().width }
         }
         let items = providers.map { provider in
-            ProviderRenderItem(
+            let percent = service.menuBarPercentage(for: provider)
+            let isDimmed = !service.isProviderConnected(provider) || (percent == nil && provider != .claude)
+            return ProviderRenderItem(
                 provider: provider,
                 icon: AppIconHelper.template(for: provider),
-                text: NSAttributedString(string: " " + service.badgeText(for: provider), attributes: textAttrs)
+                text: NSAttributedString(string: " " + service.badgeText(for: provider), attributes: isDimmed ? secondaryAttrs : textAttrs),
+                isDimmed: isDimmed,
+                isCritical: percent.map { QuotaLevel(fraction: Double($0) / 100.0) == .critical } ?? false
             )
+        }
+        func warningWidth(_ item: ProviderRenderItem) -> CGFloat {
+            item.isCritical && warningGlyph != nil ? warningSize + 2 : 0
         }
         
         let sepText = NSAttributedString(string: "  ·  ", attributes: secondaryAttrs)
         let sepWidth = sepText.size().width
         
-        var totalWidth: CGFloat = items.reduce(0) { $0 + $1.iconWidth + $1.textWidth }
+        var totalWidth: CGFloat = items.reduce(0) { $0 + $1.iconWidth + warningWidth($1) + $1.textWidth }
         totalWidth += sepWidth * CGFloat(items.count - 1)
         totalWidth = ceil(totalWidth)
         
@@ -200,7 +215,7 @@ public class StatusBarController {
         var segX: CGFloat = 0
         for (idx, item) in items.enumerated() {
             let start = idx == 0 ? 0 : segX - sepWidth / 2
-            segX += item.iconWidth + item.textWidth
+            segX += item.iconWidth + warningWidth(item) + item.textWidth
             let end = idx == items.count - 1 ? totalWidth : segX + sepWidth / 2
             providerSegments.append((item.provider, start...end))
             segX += sepWidth
@@ -214,8 +229,14 @@ public class StatusBarController {
                 let textY: CGFloat = (height - item.text.size().height) / 2
                 
                 if let ic = item.icon {
-                    ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: 1.0)
+                    ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: item.isDimmed ? 0.45 : 1.0)
                     x += iconSize
+                }
+                if item.isCritical, let glyph = warningGlyph {
+                    let glyphHeight = warningSize * glyph.size.height / max(glyph.size.width, 1)
+                    glyph.draw(in: NSRect(x: x + 2, y: (height - glyphHeight) / 2, width: warningSize, height: glyphHeight),
+                               from: .zero, operation: .sourceOver, fraction: 1.0)
+                    x += warningSize + 2
                 }
                 item.text.draw(at: NSPoint(x: x, y: textY))
                 x += item.textWidth
@@ -332,6 +353,12 @@ public class StatusBarController {
         loginItem.target = self
         menu.addItem(loginItem)
         
+        let hideEmailItem = NSMenuItem(title: "Hide Email Addresses", action: #selector(toggleHideEmailsAction), keyEquivalent: "")
+        hideEmailItem.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Hide Email Addresses")
+        hideEmailItem.state = UserDefaults.standard.bool(forKey: EmailMasking.defaultsKey) ? .on : .off
+        hideEmailItem.target = self
+        menu.addItem(hideEmailItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Actions: Refresh All
@@ -418,6 +445,11 @@ public class StatusBarController {
     
     @objc private func toggleLaunchAtLoginAction() {
         LaunchAtLogin.toggle()
+    }
+    
+    @objc private func toggleHideEmailsAction() {
+        let defaults = UserDefaults.standard
+        defaults.set(!defaults.bool(forKey: EmailMasking.defaultsKey), forKey: EmailMasking.defaultsKey)
     }
     
     @objc private func refreshAction() {

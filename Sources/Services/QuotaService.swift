@@ -699,7 +699,7 @@ public class QuotaService: ObservableObject {
                     lines.append("• Antigravity (Google): No quota data (\(tier))")
                 }
             } else {
-                lines.append("• Antigravity (Google): Offline (Launch Antigravity)")
+                lines.append("• Antigravity (Google): Not running (open Antigravity to see quotas)")
             }
         }
         
@@ -718,7 +718,7 @@ public class QuotaService: ObservableObject {
                     lines.append("• ChatGPT (OpenAI): No rate limit data (\(plan))")
                 }
             } else {
-                lines.append("• ChatGPT (OpenAI): Offline (Launch ChatGPT.app)")
+                lines.append("• ChatGPT (OpenAI): Not connected (open ChatGPT and sign in)")
             }
         }
         
@@ -740,7 +740,7 @@ public class QuotaService: ObservableObject {
                     lines.append("• Claude (Anthropic): Dynamic Free Tier (\(tier))")
                 }
             } else {
-                lines.append("• Claude (Anthropic): Offline (Launch Claude.app)")
+                lines.append("• Claude (Anthropic): Signed out (open Claude and sign in)")
             }
         }
         

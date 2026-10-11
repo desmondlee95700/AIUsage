@@ -36,7 +36,7 @@ public struct MainUsageView: View {
                     noToolsInstalledView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if service.selectedInstalledProviders.count == 1 {
-                    ScrollView(.vertical, showsIndicators: false) {
+                    OverflowScrollView {
                         switch service.selectedInstalledProviders[0] {
                         case .gemini:
                             geminiView
@@ -486,7 +486,7 @@ public struct MainUsageView: View {
     
     @ViewBuilder
     private var dualFlippingContentView: some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        OverflowScrollView {
             Group {
                 switch service.dualActiveProvider {
                 case .gemini:

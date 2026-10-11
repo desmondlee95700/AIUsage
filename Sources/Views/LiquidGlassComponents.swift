@@ -221,6 +221,103 @@ public struct GlassIconButton: View {
     }
 }
 
+// MARK: - Overflow Scroll View
+
+/// Vertical scroll view for the fixed-height popover. Scroll indicators stay hidden for the glass
+/// look, so while content continues below the fold the bottom edge fades out and a chevron
+/// appears; clicking it scrolls to the end.
+public struct OverflowScrollView<Content: View>: View {
+    public let content: Content
+
+    @State private var hiddenBelow: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static var spaceName: String { "OverflowScrollView" }
+    private static var bottomID: String { "OverflowScrollView.bottom" }
+    private static var fadeHeight: CGFloat { 36 }
+
+    public init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    private var hasMoreBelow: Bool { hiddenBelow > 8 }
+
+    public var body: some View {
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        content
+                        Color.clear.frame(height: 1).id(Self.bottomID)
+                    }
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: OverflowContentKey.self,
+                                value: geo.frame(in: .named(Self.spaceName)).maxY
+                            )
+                        }
+                    )
+                }
+                .coordinateSpace(name: Self.spaceName)
+                .onPreferenceChange(OverflowContentKey.self) { contentMaxY in
+                    let below = max(0, contentMaxY - viewport.size.height)
+                    if (below > 8) != (hiddenBelow > 8) || abs(below - hiddenBelow) > 1 {
+                        hiddenBelow = below
+                    }
+                }
+                .mask(fadeMask(height: viewport.size.height))
+                .overlay(alignment: .bottom) {
+                    if hasMoreBelow {
+                        moreBelowButton {
+                            withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion)) {
+                                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+                .animation(LiquidGlassTokens.motion(LiquidGlassTokens.hoverSpring, reduceMotion: reduceMotion), value: hasMoreBelow)
+            }
+        }
+    }
+
+    /// Opaque everywhere except a fade along the bottom while there's more content below
+    private func fadeMask(height: CGFloat) -> some View {
+        let fadeStart = height > 0 ? max(0, 1 - Self.fadeHeight / height) : 1
+        return LinearGradient(
+            stops: [
+                .init(color: .black, location: 0),
+                .init(color: .black, location: hasMoreBelow ? fadeStart : 1),
+                .init(color: .black.opacity(hasMoreBelow ? 0.05 : 1), location: 1)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    private func moreBelowButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundColor(LiquidGlassText.secondary)
+                .frame(width: 30, height: 16)
+                .liquidGlassPill()
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 4)
+        .help("More below")
+    }
+}
+
+private struct OverflowContentKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Ring Gauge
 
 /// Circular remaining-quota gauge with a glowing arc coloured by `QuotaLevel`, optionally labelled in the centre.

@@ -414,11 +414,11 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
     
     public var formattedResetType: String {
         guard let rt = resetType, !rt.isEmpty else {
-            return "Resets Available"
+            return "Rate limit reset"
         }
         let lower = rt.lowercased().replacingOccurrences(of: "_", with: "")
         if lower == "codexratelimits" || lower == "codexratelimit" || lower == "codex" || lower == "ratelimits" {
-            return "Resets Available"
+            return "Rate limit reset"
         }
         return rt
     }
