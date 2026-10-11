@@ -115,22 +115,29 @@ public struct MainUsageView: View {
         return LiquidGlassPalette.aiBlue
     }
 
-    /// Header status: data age when something is connected, with the dot showing health
-    /// (blue while refreshing, amber once stale or offline).
-    private func headerStatus(now: Date) -> (text: String, color: Color) {
+    /// Provider whose numbers are on screen
+    private var visibleProvider: AIProvider? {
         let selected = service.selectedInstalledProviders
-        guard !selected.isEmpty else { return ("No tools", Color.gray) }
-        guard selected.contains(where: service.isProviderConnected) else {
+        if selected.count == 1 { return selected[0] }
+        return selected.isEmpty ? nil : service.dualActiveProvider
+    }
+    
+    /// Header status: age of the numbers on screen, with the dot showing health (blue while
+    /// refreshing, amber once stale or offline). Measured per provider, since one provider can
+    /// serve cached figures while the others refresh.
+    private func headerStatus(now: Date) -> (text: String, color: Color) {
+        guard let provider = visibleProvider else { return ("No tools", Color.gray) }
+        guard let asOf = service.dataAsOf(provider) else {
             return service.isLoading
                 ? ("Connecting…", LiquidGlassPalette.aiBlue)
                 : ("Offline", LiquidGlassPalette.moderate)
         }
-        let text = Freshness.label(lastUpdated: service.lastUpdated, now: now)
+        let text = Freshness.label(lastUpdated: asOf, now: now)
         if service.isLoading {
             return (text, LiquidGlassPalette.aiBlue)
         }
         let stale = Freshness.isStale(
-            lastUpdated: service.lastUpdated,
+            lastUpdated: asOf,
             refreshInterval: TimeInterval(service.refreshInterval.rawValue),
             now: now
         )
@@ -149,25 +156,21 @@ public struct MainUsageView: View {
     }
 
     /// Tab subtitle. The menu bar's terse "Off" becomes what's actually wrong: the desktop
-    /// app isn't running (Antigravity, ChatGPT) or no Claude account is signed in.
+    /// app isn't running (Antigravity, ChatGPT) or no Claude account is signed in. When the
+    /// figure comes from the weekly limit, it says so.
     private func tabStatus(for provider: AIProvider) -> String {
         guard service.isProviderConnected(provider) else {
             return provider == .claude ? "Signed out" : "Not running"
         }
-        return service.badgeText(for: provider)
+        let badge = service.badgeText(for: provider)
+        return service.menuBarPercentage(for: provider) != nil && service.isWeeklyBinding(for: provider)
+            ? "\(badge) weekly"
+            : badge
     }
     
     /// Remaining fraction shown on a provider's switcher tab, or nil when it has no figure
     private func remainingFraction(for provider: AIProvider) -> Double? {
-        switch provider {
-        case .gemini:
-            return service.isGeminiConnected ? Double(service.geminiPercentage) / 100.0 : nil
-        case .chatgpt:
-            return service.isCodexConnected ? Double(service.codexRemainingPercentage) / 100.0 : nil
-        case .claude:
-            guard service.isClaudeConnected, let pct = service.claudePercentage else { return nil }
-            return Double(pct) / 100.0
-        }
+        service.menuBarPercentage(for: provider).map { Double($0) / 100.0 }
     }
     
     // MARK: - Header

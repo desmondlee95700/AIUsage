@@ -28,6 +28,9 @@ public class QuotaService: ObservableObject {
     // General Status
     @Published public var isLoading: Bool = false
     @Published public var lastUpdated: Date? = nil
+    /// When each provider last returned data successfully. `lastUpdated` only says a refresh
+    /// finished, which can be true while one provider failed or served cached numbers.
+    @Published public private(set) var providerUpdatedAt: [AIProvider: Date] = [:]
     
     // Gemini / Antigravity State
     @Published public var isGeminiConnected: Bool = false
@@ -459,6 +462,7 @@ public class QuotaService: ObservableObject {
             quotaSummary = quota
             userStatus = await status?.userStatus
             geminiErrorMessage = nil
+            providerUpdatedAt[.gemini] = Date()
         } catch {
             // The cached server isn't health-checked before use, so a failure may just mean
             // Antigravity restarted on a new port. Rediscover once before reporting an error.
@@ -482,6 +486,7 @@ public class QuotaService: ObservableObject {
             codexAccount = payload.account
             codexUsage = payload.usage
             codexErrorMessage = nil
+            providerUpdatedAt[.chatgpt] = Date()
         } catch {
             isCodexConnected = false
             codexErrorMessage = error.localizedDescription
@@ -498,6 +503,7 @@ public class QuotaService: ObservableObject {
             claudeAccount = payload.account
             claudeLimits = payload.limits
             claudeErrorMessage = nil
+            providerUpdatedAt[.claude] = Date()
         } catch {
             isClaudeConnected = false
             claudeErrorMessage = error.localizedDescription
@@ -559,9 +565,9 @@ public class QuotaService: ObservableObject {
         quotaSummary?.primary5hBucket
     }
     
-    /// Returns Antigravity quota percentage (prioritizes 5-hour limit on the menu bar)
-    public var geminiPercentage: Int {
-        (primary5hBucket ?? primaryWeeklyBucket)?.percentage ?? 0
+    /// Antigravity menu bar percentage: the lower of the 5-hour and weekly buckets, or nil without data
+    public var geminiPercentage: Int? {
+        quotaSummary?.bindingBucket?.percentage
     }
     
     public var codexSnapshot: CodexRateLimitSnapshot? {
@@ -589,8 +595,9 @@ public class QuotaService: ObservableObject {
         codexSnapshot?.activeWindow
     }
     
-    public var codexRemainingPercentage: Int {
-        codexActiveWindow?.remainingPercent ?? 0
+    /// ChatGPT menu bar percentage: the window with the least left, or nil without data
+    public var codexRemainingPercentage: Int? {
+        codexSnapshot?.bindingWindow?.remainingPercent
     }
     
     public var codexWeeklyPercentage: Int? {
@@ -603,7 +610,7 @@ public class QuotaService: ObservableObject {
     
     // MARK: - Claude Helpers
     
-    /// Menu bar percentage for Claude: the 5-hour window when reported, else the weekly one.
+    /// Menu bar percentage for Claude: the lower of the 5-hour and weekly windows.
     public var claudePercentage: Int? {
         claudeLimits?.menuBarPercent
     }
@@ -618,19 +625,55 @@ public class QuotaService: ObservableObject {
     
     // MARK: - Menu Bar Formatter Helpers
     
-    /// Short status for a provider as shown in the menu bar and provider tabs: "42%", "Off", or a tier badge.
+    /// Remaining percentage the menu bar shows for a provider, or nil when disconnected or without data.
+    public func menuBarPercentage(for provider: AIProvider) -> Int? {
+        guard isProviderConnected(provider) else { return nil }
+        switch provider {
+        case .gemini: return geminiPercentage
+        case .chatgpt: return codexRemainingPercentage
+        case .claude: return claudePercentage
+        }
+    }
+    
+    /// Whether the menu bar figure for a provider comes from its weekly limit rather than the
+    /// 5-hour one, so the popover can say which limit the number belongs to.
+    public func isWeeklyBinding(for provider: AIProvider) -> Bool {
+        switch provider {
+        case .gemini:
+            guard let binding = quotaSummary?.bindingBucket, let weekly = primaryWeeklyBucket else { return false }
+            return binding.bucketId == weekly.bucketId && primary5hBucket?.bucketId != weekly.bucketId
+        case .chatgpt:
+            guard let mins = codexSnapshot?.bindingWindow?.windowDurationMins else { return false }
+            return mins >= 6 * 1440
+        case .claude:
+            return claudeLimits?.isWeeklyBinding ?? false
+        }
+    }
+    
+    /// When the numbers shown for a provider were fetched. Claude can serve its last good limits
+    /// through brief failures, so its age comes from the limits themselves.
+    public func dataAsOf(_ provider: AIProvider) -> Date? {
+        guard isProviderConnected(provider) else { return nil }
+        if provider == .claude, let fetched = claudeLimits?.lastUpdated {
+            return fetched
+        }
+        return providerUpdatedAt[provider]
+    }
+    
+    /// Short status for a provider as shown in the menu bar and provider tabs: "42%", "–" when
+    /// connected without quota data, "Off", or a tier badge.
     public func badgeText(for provider: AIProvider) -> String {
         switch provider {
         case .gemini:
-            return isGeminiConnected ? "\(geminiPercentage)%" : "Off"
+            return isGeminiConnected ? (geminiPercentage.map { "\($0)%" } ?? "–") : "Off"
         case .chatgpt:
-            return isCodexConnected ? "\(codexRemainingPercentage)%" : "Off"
+            return isCodexConnected ? (codexRemainingPercentage.map { "\($0)%" } ?? "–") : "Off"
         case .claude:
             guard isClaudeConnected else { return "Off" }
             if let pct = claudePercentage {
                 return "\(pct)%"
             }
-            return claudeAccount?.tierBadge ?? "Free"
+            return claudeAccount?.tierBadge ?? "–"
         }
     }
     
@@ -642,10 +685,13 @@ public class QuotaService: ObservableObject {
         if providers.contains(.gemini) {
             if isGeminiConnected {
                 let tier = userStatus?.userTier?.name ?? "Connected"
-                let bucket = primary5hBucket ?? primaryWeeklyBucket
-                let reset = bucket?.formattedResetCountdown ?? "Active"
-                let windowDesc = (primary5hBucket != nil) ? "5h limit" : "Weekly"
-                lines.append("• Antigravity (Google): \(geminiPercentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
+                if let bucket = quotaSummary?.bindingBucket {
+                    let reset = bucket.formattedResetCountdown ?? "Active"
+                    let windowDesc = isWeeklyBinding(for: .gemini) ? "Weekly" : "5h limit"
+                    lines.append("• Antigravity (Google): \(bucket.percentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
+                } else {
+                    lines.append("• Antigravity (Google): No quota data (\(tier))")
+                }
             } else {
                 lines.append("• Antigravity (Google): Offline (Launch Antigravity)")
             }
@@ -663,7 +709,7 @@ public class QuotaService: ObservableObject {
                     let desc = active.windowDisplayName
                     lines.append("• ChatGPT (OpenAI): \(active.remainingPercent)% (\(desc)) remaining (\(plan)) · \(reset)")
                 } else {
-                    lines.append("• ChatGPT (OpenAI): \(codexRemainingPercentage)% remaining (\(plan))")
+                    lines.append("• ChatGPT (OpenAI): No rate limit data (\(plan))")
                 }
             } else {
                 lines.append("• ChatGPT (OpenAI): Offline (Launch ChatGPT.app)")
@@ -695,7 +741,7 @@ public class QuotaService: ObservableObject {
         if providers.isEmpty {
             lines.append("• No AI providers selected")
         } else {
-            lines.append("Click to switch views or right-click for quick actions")
+            lines.append("The menu bar shows each provider's lowest limit. Click for details, right-click for actions.")
         }
         return lines.joined(separator: "\n")
     }

@@ -69,6 +69,31 @@ final class QuotaSelectionTests: XCTestCase {
         XCTAssertNil(data.primaryWeeklyBucket)
     }
 
+    func testBindingBucketIsTheLowerOfFiveHourAndWeekly() {
+        let weeklyLow = summary([("Gemini", [
+            bucket("g-5h", name: "5h", window: "5h", fraction: 1.0),
+            bucket("g-weekly", name: "Weekly", window: "weekly", fraction: 0.04)
+        ])])
+        XCTAssertEqual(weeklyLow.bindingBucket?.bucketId, "g-weekly")
+
+        let fiveHourLow = summary([("Gemini", [
+            bucket("g-5h", name: "5h", window: "5h", fraction: 0.2),
+            bucket("g-weekly", name: "Weekly", window: "weekly", fraction: 0.9)
+        ])])
+        XCTAssertEqual(fiveHourLow.bindingBucket?.bucketId, "g-5h")
+    }
+
+    func testBindingBucketSkipsBucketsWithoutData() {
+        let partial = summary([("Gemini", [
+            bucket("g-5h", name: "5h", window: "5h", fraction: nil),
+            bucket("g-weekly", name: "Weekly", window: "weekly", fraction: 0.7)
+        ])])
+        XCTAssertEqual(partial.bindingBucket?.bucketId, "g-weekly")
+
+        let none = summary([("Gemini", [bucket("g-5h", name: "5h", window: "5h", fraction: nil)])])
+        XCTAssertNil(none.bindingBucket)
+    }
+
     func testBucketPercentageRounds() {
         XCTAssertEqual(bucket("a", name: "A", fraction: 0.456).percentage, 46)
         XCTAssertEqual(bucket("a", name: "A", fraction: nil).percentage, 0)
@@ -101,6 +126,20 @@ final class QuotaSelectionTests: XCTestCase {
         XCTAssertNil(snapshot(primary: nil, secondary: nil).activeWindow)
     }
 
+    func testCodexBindingWindowIsTheLowest() {
+        let fiveHour = window(used: 0, mins: 300)
+        let weekly = window(used: 96, mins: 10_080)
+        XCTAssertEqual(snapshot(primary: fiveHour, secondary: weekly).bindingWindow?.windowDurationMins, 10_080)
+        XCTAssertEqual(snapshot(primary: window(used: 70, mins: 300), secondary: window(used: 20, mins: 10_080))
+            .bindingWindow?.windowDurationMins, 300)
+        XCTAssertNil(snapshot(primary: nil, secondary: nil).bindingWindow)
+    }
+
+    func testCodexBindingWindowTieGoesToShorterWindow() {
+        let tie = snapshot(primary: window(used: 50, mins: 10_080), secondary: window(used: 50, mins: 300))
+        XCTAssertEqual(tie.bindingWindow?.windowDurationMins, 300)
+    }
+
     // MARK: - Claude limits
 
     private func limits(fiveHour: Int, weekly: Int, hasFiveHour: Bool = true, hasWeekly: Bool = true) -> ClaudeUsageLimits {
@@ -111,10 +150,22 @@ final class QuotaSelectionTests: XCTestCase {
         )
     }
 
-    func testClaudeMenuBarPercentPrefersFiveHourWindow() {
+    func testClaudeMenuBarPercentIsTheLowerWindow() {
         XCTAssertEqual(limits(fiveHour: 30, weekly: 80).menuBarPercent, 30)
+        XCTAssertEqual(limits(fiveHour: 100, weekly: 4).menuBarPercent, 4)
         XCTAssertEqual(limits(fiveHour: 100, weekly: 80, hasFiveHour: false).menuBarPercent, 80)
+        // An unreported window's placeholder never wins
+        XCTAssertEqual(limits(fiveHour: 0, weekly: 80, hasFiveHour: false).menuBarPercent, 80)
         XCTAssertNil(limits(fiveHour: 100, weekly: 100, hasFiveHour: false, hasWeekly: false).menuBarPercent)
+    }
+
+    func testClaudeWeeklyBinding() {
+        XCTAssertTrue(limits(fiveHour: 100, weekly: 4).isWeeklyBinding)
+        XCTAssertFalse(limits(fiveHour: 30, weekly: 80).isWeeklyBinding)
+        // Ties read as the 5-hour window
+        XCTAssertFalse(limits(fiveHour: 50, weekly: 50).isWeeklyBinding)
+        XCTAssertTrue(limits(fiveHour: 100, weekly: 80, hasFiveHour: false).isWeeklyBinding)
+        XCTAssertFalse(limits(fiveHour: 100, weekly: 0, hasWeekly: false).isWeeklyBinding)
     }
 
     func testClaudeUnreportedWindowsAreNil() {
@@ -127,7 +178,8 @@ final class QuotaSelectionTests: XCTestCase {
 
     func testPaidTiersCanSeeUsageLimitsAndMatchBadge() {
         let paid = ["claude_pro": "Pro", "pro": "Pro", "claude_max": "Max", "max": "Max",
-                    "raven": "Team", "enterprise": "Enterprise", "CLAUDE_PRO": "Pro"]
+                    "raven": "Team", "enterprise": "Enterprise", "CLAUDE_PRO": "Pro",
+                    "claude_max_20x": "Max", "claude_team": "Team", "claude_enterprise": "Enterprise"]
         for (type, badge) in paid {
             let account = ClaudeAccountInfo(organizationType: type)
             XCTAssertEqual(account.tierBadge, badge, type)
@@ -135,8 +187,15 @@ final class QuotaSelectionTests: XCTestCase {
         }
     }
 
-    func testFreeAndUnknownTiersCannotSeeUsageLimits() {
-        for type in ["free", "claude_free", "something_new", nil] as [String?] {
+    func testUnknownPaidTierShowsItsOwnNameAndLimits() {
+        let account = ClaudeAccountInfo(organizationType: "claude_something_new")
+        XCTAssertEqual(account.tierBadge, "Something New")
+        XCTAssertEqual(account.formattedTier, "Claude Something New")
+        XCTAssertTrue(account.canSeeUsageLimits)
+    }
+
+    func testFreeTiersCannotSeeUsageLimits() {
+        for type in ["free", "claude_free", "none", "", nil] as [String?] {
             let account = ClaudeAccountInfo(organizationType: type)
             XCTAssertEqual(account.tierBadge, "Free", type ?? "nil")
             XCTAssertFalse(account.canSeeUsageLimits, type ?? "nil")

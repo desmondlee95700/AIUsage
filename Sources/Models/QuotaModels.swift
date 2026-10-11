@@ -75,6 +75,16 @@ public struct QuotaSummaryData: Codable {
                    window.contains("hour")
         } ?? group?.buckets.first { $0.window != "weekly" && !$0.bucketId.contains("weekly") }
     }
+
+    /// The bucket shown in the menu bar: of the primary group's 5-hour and weekly buckets, the one
+    /// with the least quota left. Buckets without a reported fraction are skipped, so this is nil
+    /// rather than a misleading 0% when there's no data.
+    public var bindingBucket: QuotaBucket? {
+        [primary5hBucket, primaryWeeklyBucket]
+            .compactMap { $0 }
+            .filter { $0.remainingFraction != nil }
+            .min { ($0.remainingFraction ?? 1) < ($1.remainingFraction ?? 1) }
+    }
 }
 
 public struct QuotaGroup: Codable, Identifiable {
@@ -220,9 +230,21 @@ public struct CodexRateLimitSnapshot: Codable {
         return nil
     }
     
-    /// The window shown in the menu bar: the 5-hour rolling limit, then weekly, then whatever is reported.
+    /// The headline window for alerts and the tooltip: the 5-hour rolling limit, then weekly, then whatever is reported.
     public var activeWindow: CodexRateLimitWindow? {
         rollingShortWindow ?? weeklyWindow ?? primary ?? secondary
+    }
+
+    /// The window shown in the menu bar: whichever has the least quota left, since that's the one that
+    /// blocks you first. A full 5-hour window with an exhausted weekly limit is still exhausted.
+    /// Ties go to the shorter window, which resets sooner.
+    public var bindingWindow: CodexRateLimitWindow? {
+        [primary, secondary].compactMap { $0 }.min { a, b in
+            if a.remainingPercent != b.remainingPercent {
+                return a.remainingPercent < b.remainingPercent
+            }
+            return (a.windowDurationMins ?? .max) < (b.windowDurationMins ?? .max)
+        }
     }
     
     /// All active rate limit windows, ordered with shorter rolling window first followed by weekly/longer window
@@ -519,50 +541,31 @@ public struct ClaudeAccountInfo: Codable, Equatable, Sendable {
     }
     
     public var formattedTier: String {
-        guard let type = organizationType?.lowercased() else {
-            return "Claude Free"
-        }
-        switch type {
-        case "claude_pro", "pro":
-            return "Claude Pro"
-        case "claude_max", "max":
-            return "Claude Max"
-        case "raven":
-            return "Claude Team"
-        case "enterprise":
-            return "Claude Enterprise"
-        case "free":
-            return "Claude Free"
-        default:
-            return "Claude (\(type.capitalized))"
-        }
+        "Claude \(tierBadge)"
     }
-    
+
+    /// Plan values that mean no subscription, with any "claude_" prefix removed.
+    private static let freePlanNames: Set<String> = ["free", "none"]
+
+    /// Short plan name: "Pro", "Max", "Team", "Enterprise" or "Free". Plan strings differ between
+    /// claude.ai and Claude Code and gain variants over time (e.g. "claude_max_20x"), so known plans
+    /// match by keyword and any other non-free value shows under its own name. Treating unknown
+    /// values as Free would hide a paying user's limits behind an upgrade prompt.
     public var tierBadge: String {
-        guard let type = organizationType?.lowercased() else {
-            return "Free"
-        }
-        switch type {
-        case "claude_pro", "pro": return "Pro"
-        case "claude_max", "max": return "Max"
-        case "raven": return "Team"
-        case "enterprise": return "Enterprise"
-        default: return "Free"
-        }
+        guard var name = organizationType?.lowercased(), !name.isEmpty else { return "Free" }
+        if name.hasPrefix("claude_") { name.removeFirst("claude_".count) }
+        if Self.freePlanNames.contains(name) { return "Free" }
+        if name.contains("enterprise") { return "Enterprise" }
+        if name.contains("max") { return "Max" }
+        if name.contains("team") || name == "raven" { return "Team" }
+        if name.contains("pro") { return "Pro" }
+        return name.replacingOccurrences(of: "_", with: " ").capitalized
     }
-    
+
     /// Paid tiers have 5-hour and weekly usage limits to track. Derived from `tierBadge` so the
     /// two never disagree about which plan values are paid.
     public var canSeeUsageLimits: Bool {
         tierBadge != "Free"
-    }
-    
-    public var tierDescription: String {
-        if canSeeUsageLimits {
-            return "Includes dedicated 5-hour rolling session and weekly model quota tracking."
-        } else {
-            return "Free tier has dynamic server-capacity cooldowns. Upgrade to Claude Pro for full quota limits."
-        }
     }
 }
 
@@ -623,9 +626,16 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
         hasWeeklyWindow ? weeklyRemainingPercent : nil
     }
     
-    /// Menu bar percentage: the 5-hour window when reported, else the weekly one.
+    /// Menu bar percentage: the lower of the 5-hour and weekly windows, since running out of either
+    /// blocks you. Model-specific weekly limits (Sonnet, Opus) are left out as they only block one model.
     public var menuBarPercent: Int? {
-        fiveHourPercent ?? weeklyPercent
+        [fiveHourPercent, weeklyPercent].compactMap { $0 }.min()
+    }
+
+    /// Whether the weekly window, rather than the 5-hour one, is the figure in the menu bar.
+    public var isWeeklyBinding: Bool {
+        guard let weekly = weeklyPercent else { return false }
+        return weekly < (fiveHourPercent ?? 101)
     }
     
     public var formattedFiveHourCountdown: String? {

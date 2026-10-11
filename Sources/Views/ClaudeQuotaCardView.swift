@@ -63,7 +63,7 @@ public struct ClaudeQuotaCardView: View {
                 provider: .claude,
                 icon: AppIconHelper.claudeIcon,
                 systemFallback: "asterisk",
-                planName: account?.formattedTier ?? "Claude Free",
+                planName: account?.formattedTier ?? "Claude",
                 email: account?.emailAddress,
                 appName: "Claude",
                 onLaunch: { ClaudeDiscovery.launchClaudeApp() },
@@ -89,7 +89,8 @@ public struct ClaudeQuotaCardView: View {
             GlassSectionHeader("Rate Limits", systemImage: "gauge.with.dots.needle.67percent", tint: tint)
             
             Group {
-                if account?.canSeeUsageLimits ?? true, let limits = limits {
+                // Limits from the server win over the plan name: if they're reported, the plan has them
+                if let limits = limits {
                     // Re-render periodically so the reset countdowns tick between refreshes
                     TimelineView(.periodic(from: .now, by: LiquidGlassTokens.countdownTick)) { _ in
                         let items = tiles(for: limits)
@@ -186,7 +187,7 @@ public struct ClaudeQuotaCardView: View {
     
     /// Paid plans manage billing; free plans see the upgrade page.
     private var planLink: ProviderPlanCard.PlanLink? {
-        account?.canSeeUsageLimits == true
+        account?.canSeeUsageLimits == true || limits != nil
             ? URL(string: "https://claude.ai/settings/billing").map { .init(title: "Manage plan", url: $0) }
             : URL(string: "https://claude.ai/upgrade").map { .init(title: "Upgrade plan", url: $0) }
     }
