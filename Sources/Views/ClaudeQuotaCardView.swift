@@ -8,7 +8,7 @@ public struct ClaudeQuotaCardView: View {
     public init(
         account: ClaudeAccountInfo?,
         limits: ClaudeUsageLimits?,
-        service: QuotaService = .shared
+        service: QuotaService
     ) {
         self.account = account
         self.limits = limits

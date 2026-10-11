@@ -8,7 +8,8 @@ import Foundation
 ///
 /// Only the Claude Code and Codex CLI are covered; chats in the Claude desktop app,
 /// claude.ai and chatgpt.com don't leave token counts on disk.
-public final class TokenActivityService {
+/// `@unchecked Sendable`: the only mutable state, `cache`, is confined to the serial `queue`.
+public final class TokenActivityService: @unchecked Sendable {
     public static let shared = TokenActivityService()
 
     public static let dayCount = TokenActivityRange.longest.rawValue
@@ -34,12 +35,12 @@ public final class TokenActivityService {
 
     // MARK: - Public API
 
-    public func loadClaude(completion: @escaping (TokenActivitySummary?) -> Void) {
-        load(roots: Self.claudeProjectRoots, parser: Self.parseClaudeLog, completion: completion)
+    public func loadClaude() async -> TokenActivitySummary? {
+        await load(roots: Self.claudeProjectRoots, parser: Self.parseClaudeLog)
     }
 
-    public func loadCodex(completion: @escaping (TokenActivitySummary?) -> Void) {
-        load(roots: Self.codexSessionRoots, parser: Self.parseCodexLog, completion: completion)
+    public func loadCodex() async -> TokenActivitySummary? {
+        await load(roots: Self.codexSessionRoots, parser: Self.parseCodexLog)
     }
 
     // MARK: - Locations
@@ -67,15 +68,12 @@ public final class TokenActivityService {
 
     // MARK: - Loading
 
-    private func load(
-        roots: [URL],
-        parser: @escaping (Data) -> [ParsedEntry],
-        completion: @escaping (TokenActivitySummary?) -> Void
-    ) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            let summary = self.scan(roots: roots, parser: parser)
-            DispatchQueue.main.async { completion(summary) }
+    /// Scans on `queue`, which serializes access to `cache` and keeps the file reads off the caller's thread.
+    private func load(roots: [URL], parser: @escaping (Data) -> [ParsedEntry]) async -> TokenActivitySummary? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.scan(roots: roots, parser: parser))
+            }
         }
     }
 

@@ -521,7 +521,7 @@ public enum RefreshInterval: Int, CaseIterable, Codable {
 
 // MARK: - Claude Models (Anthropic)
 
-public struct ClaudeAccountInfo: Codable, Equatable {
+public struct ClaudeAccountInfo: Codable, Equatable, Sendable {
     public let accountUuid: String?
     public let emailAddress: String?
     public let displayName: String?
@@ -602,7 +602,7 @@ public struct ClaudeAccountInfo: Codable, Equatable {
     }
 }
 
-public struct ClaudeUsageLimits: Codable, Equatable {
+public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     public let fiveHourRemainingPercent: Int
     public let fiveHourUsedPercent: Int
     public let fiveHourResetTime: Date?
