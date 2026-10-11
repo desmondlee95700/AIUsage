@@ -102,7 +102,7 @@ public final class ClaudeService {
         let rateLimitTier = org["rate_limit_tier"] as? String
         let createdAt = org["created_at"] as? String
         
-        // Extract display email and name cleanly from org name (e.g. "d3smond95@gmail.com's Organization")
+        // Extract display email and name cleanly from org name (e.g. "user@example.com's Organization")
         let extractedEmail: String = {
             if let atRange = rawOrgName.range(of: "@") {
                 let prefix = rawOrgName[..<atRange.upperBound]

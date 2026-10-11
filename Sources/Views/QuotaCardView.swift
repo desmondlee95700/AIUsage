@@ -66,19 +66,22 @@ public struct QuotaBucketRowView: View {
 
             LiquidMeterBar(fraction: fraction, height: 7)
 
-            if let resetInfo = bucket.formattedResetCountdown {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9, weight: .semibold))
-                    Text(resetInfo)
-                        .font(.system(size: 10.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 4)
-                    Text(level.label)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(level.color)
+            // Re-render periodically so the countdown ticks between refreshes
+            TimelineView(.periodic(from: .now, by: LiquidGlassTokens.countdownTick)) { _ in
+                if let resetInfo = bucket.formattedResetCountdown {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(resetInfo)
+                            .font(.system(size: 10.5))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Text(level.label)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(level.color)
+                    }
+                    .foregroundColor(LiquidGlassText.tertiary)
                 }
-                .foregroundColor(LiquidGlassText.tertiary)
             }
         }
         .padding(.horizontal, 10)

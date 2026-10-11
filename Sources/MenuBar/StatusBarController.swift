@@ -6,6 +6,7 @@ public class StatusBarController {
     private var popover: NSPopover
     private var service: QuotaService
     private var eventMonitor: Any?
+    private var wakeObserver: NSObjectProtocol?
     /// Horizontal extent of each provider's section within the rendered menu bar image
     /// (image coordinates), used to open the popover on the provider that was clicked.
     private var providerSegments: [(provider: AIProvider, range: ClosedRange<CGFloat>)] = []
@@ -33,9 +34,25 @@ public class StatusBarController {
         // Initial refresh
         service.refresh()
         
+        // Quotas go stale over sleep and Antigravity may come back on a new port, so
+        // rediscover after wake. The short delay lets Wi-Fi reconnect first.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                self?.service.refresh(forceDiscovery: true)
+            }
+        }
+        
         // Background check for updates (silent)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
             UpdateService.shared.checkForUpdates(isUserInitiated: false)
+        }
+    }
+    
+    deinit {
+        if let wakeObserver = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
         }
     }
     

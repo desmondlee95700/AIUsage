@@ -92,16 +92,19 @@ public struct ClaudeQuotaCardView: View {
             
             Group {
                 if account?.canSeeUsageLimits ?? true, let limits = limits {
-                    let items = tiles(for: limits)
-                    QuotaTileGrid(count: items.count) { index in
-                        let item = items[index]
-                        QuotaTile(
-                            title: item.title,
-                            caption: "\(item.usedPercent)% used",
-                            fraction: Double(item.remainingPercent) / 100.0,
-                            resetText: item.reset
-                        )
-                        .help(item.caption)
+                    // Re-render periodically so the reset countdowns tick between refreshes
+                    TimelineView(.periodic(from: .now, by: LiquidGlassTokens.countdownTick)) { _ in
+                        let items = tiles(for: limits)
+                        QuotaTileGrid(count: items.count) { index in
+                            let item = items[index]
+                            QuotaTile(
+                                title: item.title,
+                                caption: "\(item.usedPercent)% used",
+                                fraction: Double(item.remainingPercent) / 100.0,
+                                resetText: item.reset
+                            )
+                            .help(item.caption)
+                        }
                     }
                     .padding(8)
                 } else if account?.canSeeUsageLimits ?? true {
