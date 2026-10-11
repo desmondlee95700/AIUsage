@@ -43,6 +43,38 @@ public struct QuotaSummaryResponse: Codable {
 public struct QuotaSummaryData: Codable {
     public let groups: [QuotaGroup]?
     public let description: String?
+    
+    /// The group shown in the menu bar: the Gemini models when present, else the first group.
+    var primaryGroup: QuotaGroup? {
+        groups?.first { $0.displayName.contains("Gemini") } ?? groups?.first
+    }
+    
+    /// The primary group's weekly bucket, matched by window, id or name.
+    public var primaryWeeklyBucket: QuotaBucket? {
+        primaryGroup?.buckets.first { bucket in
+            let window = bucket.window?.lowercased() ?? ""
+            let id = bucket.bucketId.lowercased()
+            let name = bucket.displayName.lowercased()
+            return window == "weekly" || window.contains("week") || id.contains("weekly") || name.contains("week")
+        }
+    }
+    
+    /// The primary group's 5-hour bucket, falling back to its first non-weekly bucket.
+    public var primary5hBucket: QuotaBucket? {
+        let group = primaryGroup
+        return group?.buckets.first { bucket in
+            let window = bucket.window?.lowercased() ?? ""
+            let id = bucket.bucketId.lowercased()
+            let name = bucket.displayName.lowercased()
+            return window == "5h" ||
+                   window.contains("5h") ||
+                   id.contains("5h") ||
+                   name.contains("5h") ||
+                   name.contains("5 hour") ||
+                   name.contains("5-hour") ||
+                   window.contains("hour")
+        } ?? group?.buckets.first { $0.window != "weekly" && !$0.bucketId.contains("weekly") }
+    }
 }
 
 public struct QuotaGroup: Codable, Identifiable {
@@ -208,6 +240,11 @@ public struct CodexRateLimitSnapshot: Codable {
             return s
         }
         return nil
+    }
+    
+    /// The window shown in the menu bar: the 5-hour rolling limit, then weekly, then whatever is reported.
+    public var activeWindow: CodexRateLimitWindow? {
+        rollingShortWindow ?? weeklyWindow ?? primary ?? secondary
     }
     
     /// All active rate limit windows, ordered with shorter rolling window first followed by weekly/longer window
@@ -550,10 +587,10 @@ public struct ClaudeAccountInfo: Codable, Equatable {
         }
     }
     
-    /// Checks which Claude tier has access to dedicated usage limits tracking
+    /// Paid tiers have 5-hour and weekly usage limits to track. Derived from `tierBadge` so the
+    /// two never disagree about which plan values are paid.
     public var canSeeUsageLimits: Bool {
-        guard let type = organizationType?.lowercased() else { return false }
-        return type == "claude_pro" || type == "pro" || type == "raven" || type == "claude_max" || type == "enterprise"
+        tierBadge != "Free"
     }
     
     public var tierDescription: String {
@@ -610,6 +647,21 @@ public struct ClaudeUsageLimits: Codable, Equatable {
         self.hasFiveHourWindow = hasFiveHourWindow
         self.hasWeeklyWindow = hasWeeklyWindow
         self.lastUpdated = lastUpdated
+    }
+    
+    /// Remaining 5-hour percentage, or nil when the server didn't report that window.
+    public var fiveHourPercent: Int? {
+        hasFiveHourWindow ? fiveHourRemainingPercent : nil
+    }
+    
+    /// Remaining weekly percentage, or nil when the server didn't report that window.
+    public var weeklyPercent: Int? {
+        hasWeeklyWindow ? weeklyRemainingPercent : nil
+    }
+    
+    /// Menu bar percentage: the 5-hour window when reported, else the weekly one.
+    public var menuBarPercent: Int? {
+        fiveHourPercent ?? weeklyPercent
     }
     
     public var formattedFiveHourCountdown: String? {
