@@ -579,7 +579,10 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     public let weeklyResetTime: Date?
     
     public let sonnetRemainingPercent: Int?
+    public let sonnetResetTime: Date?
     public let opusRemainingPercent: Int?
+    public let opusResetTime: Date?
+    /// Remaining share of the monthly extra-usage cap; nil when extra usage is off or unreported.
     public let extraUsagePercent: Int?
     
     /// Whether the server reported each window. When false, the matching percentages are placeholders.
@@ -596,7 +599,9 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
         weeklyUsedPercent: Int,
         weeklyResetTime: Date? = nil,
         sonnetRemainingPercent: Int? = nil,
+        sonnetResetTime: Date? = nil,
         opusRemainingPercent: Int? = nil,
+        opusResetTime: Date? = nil,
         extraUsagePercent: Int? = nil,
         hasFiveHourWindow: Bool = true,
         hasWeeklyWindow: Bool = true,
@@ -609,7 +614,9 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
         self.weeklyUsedPercent = weeklyUsedPercent
         self.weeklyResetTime = weeklyResetTime
         self.sonnetRemainingPercent = sonnetRemainingPercent
+        self.sonnetResetTime = sonnetResetTime
         self.opusRemainingPercent = opusRemainingPercent
+        self.opusResetTime = opusResetTime
         self.extraUsagePercent = extraUsagePercent
         self.hasFiveHourWindow = hasFiveHourWindow
         self.hasWeeklyWindow = hasWeeklyWindow
@@ -645,6 +652,17 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     
     public var formattedWeeklyCountdown: String? {
         guard let reset = weeklyResetTime else { return "Weekly reset" }
+        return DateParsing.countdown(until: reset).map { "Resets in \($0)" } ?? "Refreshed"
+    }
+    
+    /// Reset time for a model-specific weekly limit (Sonnet, Opus). These run on their own
+    /// schedule, so the all-models weekly reset is only a fallback when the server omits one.
+    public func modelResetTime(_ reset: Date?) -> Date? {
+        reset ?? weeklyResetTime
+    }
+    
+    public func formattedModelCountdown(_ reset: Date?) -> String? {
+        guard let reset = modelResetTime(reset) else { return "Weekly reset" }
         return DateParsing.countdown(until: reset).map { "Resets in \($0)" } ?? "Refreshed"
     }
 }

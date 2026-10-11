@@ -28,6 +28,35 @@ final class ClaudeParsingTests: XCTestCase {
         XCTAssertNotNil(limits.weeklyResetTime)
     }
 
+    func testModelLimitsKeepTheirOwnResetTimes() throws {
+        let limits = try XCTUnwrap(parse("""
+        {
+          "seven_day": {"utilization": 10, "resets_at": "2026-10-14T00:00:00Z"},
+          "seven_day_sonnet": {"utilization": 20, "resets_at": "2026-10-16T00:00:00Z"},
+          "seven_day_opus": {"utilization": 75}
+        }
+        """))
+        XCTAssertEqual(limits.sonnetRemainingPercent, 80)
+        XCTAssertEqual(limits.opusRemainingPercent, 25)
+        XCTAssertEqual(limits.modelResetTime(limits.sonnetResetTime), ClaudeService.parseDate("2026-10-16T00:00:00Z"))
+        // Opus has no reset of its own, so it falls back to the all-models weekly reset
+        XCTAssertNil(limits.opusResetTime)
+        XCTAssertEqual(limits.modelResetTime(limits.opusResetTime), limits.weeklyResetTime)
+    }
+
+    func testOpusOnlyPayloadIsNotTreatedAsFreeTier() {
+        XCTAssertNotNil(parse(#"{"five_hour": null, "seven_day": null, "seven_day_opus": {"utilization": 5}}"#))
+    }
+
+    func testDisabledExtraUsageIsNil() throws {
+        let off = try XCTUnwrap(parse(#"{"five_hour": {"utilization": 1}, "extra_usage": {"is_enabled": false, "utilization": null}}"#))
+        XCTAssertNil(off.extraUsagePercent)
+        let offWithFigure = try XCTUnwrap(parse(#"{"five_hour": {"utilization": 1}, "extra_usage": {"is_enabled": false, "utilization": 0}}"#))
+        XCTAssertNil(offWithFigure.extraUsagePercent)
+        let on = try XCTUnwrap(parse(#"{"five_hour": {"utilization": 1}, "extra_usage": {"is_enabled": true, "utilization": 40}}"#))
+        XCTAssertEqual(on.extraUsagePercent, 60)
+    }
+
     func testFreeTierNullLimitsReturnNil() {
         XCTAssertNil(parse(#"{"five_hour": null, "seven_day": null, "seven_day_sonnet": null}"#))
     }

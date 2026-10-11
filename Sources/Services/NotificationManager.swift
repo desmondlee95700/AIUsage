@@ -22,7 +22,7 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
     
-    public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil) {
+    public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil, resetDate: Date? = nil) {
         let center = UNUserNotificationCenter.current()
         
         center.getNotificationSettings { [weak self] settings in
@@ -35,24 +35,20 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             if settings.authorizationStatus == .notDetermined {
                 self?.requestAuthorization { granted in
                     if granted {
-                        self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window)
+                        self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
                     }
                 }
                 return
             }
             
-            self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window)
+            self?.postNotification(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
         }
     }
     
-    private func postNotification(provider: String, remainingQuota: String, window: String? = nil) {
+    private func postNotification(provider: String, remainingQuota: String, window: String? = nil, resetDate: Date? = nil) {
         let content = UNMutableNotificationContent()
         content.title = "\(provider) Quota Alert"
-        if let window = window, !window.isEmpty {
-            content.body = "You have \(remainingQuota) quota remaining (\(window)) on \(provider)."
-        } else {
-            content.body = "You have \(remainingQuota) quota remaining on \(provider)."
-        }
+        content.body = Self.lowQuotaBody(provider: provider, remainingQuota: remainingQuota, window: window, resetDate: resetDate)
         content.sound = .default
         
         let iconName: String = {
@@ -87,6 +83,21 @@ public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 print("Failed to deliver notification: \(error.localizedDescription)")
             }
         }
+    }
+    
+    /// "25% of your 5-hour limit left on ChatGPT. Resets in 2h 10m." The reset time is the
+    /// next thing you'd want to know, so it's included whenever the provider reports one.
+    static func lowQuotaBody(provider: String, remainingQuota: String, window: String?, resetDate: Date?, now: Date = Date()) -> String {
+        var body: String
+        if let window = window, !window.isEmpty {
+            body = "\(remainingQuota) of your \(window) left on \(provider)."
+        } else {
+            body = "\(remainingQuota) quota left on \(provider)."
+        }
+        if let resetDate = resetDate, let countdown = DateParsing.countdown(until: resetDate, now: now) {
+            body += " Resets in \(countdown)."
+        }
+        return body
     }
     
     // Present banner directly even when app is active

@@ -48,10 +48,19 @@ public struct ClaudeQuotaCardView: View {
         if let sonnet = limits.sonnetRemainingPercent {
             list.append(LimitTile(
                 title: "Sonnet",
-                caption: "Weekly dedicated quota",
+                caption: "Weekly Sonnet limit",
                 remainingPercent: sonnet,
-                reset: limits.formattedWeeklyCountdown,
-                resetDate: limits.weeklyResetTime
+                reset: limits.formattedModelCountdown(limits.sonnetResetTime),
+                resetDate: limits.modelResetTime(limits.sonnetResetTime)
+            ))
+        }
+        if let opus = limits.opusRemainingPercent {
+            list.append(LimitTile(
+                title: "Opus",
+                caption: "Weekly Opus limit",
+                remainingPercent: opus,
+                reset: limits.formattedModelCountdown(limits.opusResetTime),
+                resetDate: limits.modelResetTime(limits.opusResetTime)
             ))
         }
         return list
@@ -72,7 +81,8 @@ public struct ClaudeQuotaCardView: View {
             
             quotaSection
             
-            if let extra = limits?.extraUsagePercent, account?.hasExtraUsageEnabled == true {
+            // Reported by the usage endpoint only while extra usage is turned on
+            if let extra = limits?.extraUsagePercent {
                 extraUsageSection(remainingPercent: extra)
             }
             
@@ -112,8 +122,9 @@ public struct ClaudeQuotaCardView: View {
                     notice(
                         systemImage: "wifi.slash",
                         color: LiquidGlassPalette.moderate,
-                        title: "Connection Lost",
-                        message: "5-hour and weekly limits are unavailable because Claude Code hasn't been active recently. They'll return automatically once you use Claude Code again."
+                        title: "Limits Unavailable",
+                        // Either source can fail: claude.ai rate-limits or the session lapses, or Claude Code's sign-in expires
+                        message: "Couldn't fetch your 5-hour and weekly limits. Claude may be limiting requests, or a sign-in needs refreshing: opening Claude or Claude Code usually fixes it. AIUsage keeps retrying."
                     )
                 } else {
                     notice(
@@ -164,7 +175,7 @@ public struct ClaudeQuotaCardView: View {
                         Text("Pay-as-you-go extra usage is active")
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundColor(LiquidGlassText.primary)
-                        Text("Allows continued generation after standard limits are exhausted.")
+                        Text("Keeps Claude working after your plan's limits run out. The figure is what's left of your monthly cap.")
                             .font(.system(size: 11))
                             .foregroundColor(LiquidGlassText.tertiary)
                             .fixedSize(horizontal: false, vertical: true)

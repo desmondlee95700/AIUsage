@@ -204,13 +204,15 @@ public actor ClaudeService {
         let soObj = usage["seven_day_opus"] as? [String: Any]
         let extraObj = usage["extra_usage"] as? [String: Any]
         
-        guard fhObj != nil || sdObj != nil || snObj != nil else { return nil } // Free tier returns null limits
+        guard fhObj != nil || sdObj != nil || snObj != nil || soObj != nil else { return nil } // Free tier returns null limits
         
         func remaining(_ util: Double?) -> Int? {
             util.map { max(0, min(100, 100 - Int(round($0)))) }
         }
         let fhRemaining = remaining(fhObj?["utilization"] as? Double) ?? 100
         let sdRemaining = remaining(sdObj?["utilization"] as? Double) ?? 100
+        // Extra usage is reported with `is_enabled: false` and null figures when it's turned off
+        let extraEnabled = (extraObj?["is_enabled"] as? Bool) ?? true
         
         return ClaudeUsageLimits(
             fiveHourRemainingPercent: fhRemaining,
@@ -220,8 +222,10 @@ public actor ClaudeService {
             weeklyUsedPercent: 100 - sdRemaining,
             weeklyResetTime: parseDate(sdObj?["resets_at"]),
             sonnetRemainingPercent: remaining(snObj?["utilization"] as? Double),
+            sonnetResetTime: parseDate(snObj?["resets_at"]),
             opusRemainingPercent: remaining(soObj?["utilization"] as? Double),
-            extraUsagePercent: remaining(extraObj?["utilization"] as? Double),
+            opusResetTime: parseDate(soObj?["resets_at"]),
+            extraUsagePercent: extraEnabled ? remaining(extraObj?["utilization"] as? Double) : nil,
             hasFiveHourWindow: fhObj != nil,
             hasWeeklyWindow: sdObj != nil,
             lastUpdated: Date()

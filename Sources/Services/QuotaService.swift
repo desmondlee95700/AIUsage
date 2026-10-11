@@ -380,51 +380,56 @@ public class QuotaService: ObservableObject {
     // MARK: - Low Quota Spending Alerts
     
     private func checkLowQuotaNotifications() {
-        // 1. ChatGPT (OpenAI)
+        // 1. ChatGPT (OpenAI): the 5-hour and weekly limits each alert on their own, since
+        // running out of either blocks you
         if isCodexConnected && selectedProviders.contains(.chatgpt) {
-            if let short = codex5hWindow {
-                evaluateQuotaAlert(provider: "ChatGPT", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: short.remainingPercent)
-            } else if let active = codexActiveWindow {
-                evaluateQuotaAlert(provider: "ChatGPT", windowName: active.windowDisplayName.lowercased(), keySuffix: "active", remainingPercent: active.remainingPercent)
+            let short = codex5hWindow
+            let weekly = codexWeeklyWindow
+            if let short = short {
+                evaluateQuotaAlert(provider: "ChatGPT", windowName: "5-hour limit", keySuffix: "5h",
+                                   remainingPercent: short.remainingPercent, resetDate: short.resetDate)
+            }
+            if let weekly = weekly {
+                evaluateQuotaAlert(provider: "ChatGPT", windowName: "weekly limit", keySuffix: "weekly",
+                                   remainingPercent: weekly.remainingPercent, resetDate: weekly.resetDate)
+            }
+            if short == nil, weekly == nil, let active = codexActiveWindow {
+                evaluateQuotaAlert(provider: "ChatGPT", windowName: active.windowDisplayName.lowercased(), keySuffix: "active",
+                                   remainingPercent: active.remainingPercent, resetDate: active.resetDate)
             }
         }
         
-        // 2. Antigravity (Google) — inspect all groups including Gemini Models and Claude/GPT models
+        // 2. Antigravity (Google): one alert per model group, for whichever of its buckets has the
+        // least left. Alerting per bucket sent several notifications for a single session.
         if isGeminiConnected && selectedProviders.contains(.gemini) {
-            if let groups = quotaSummary?.groups, !groups.isEmpty {
-                for group in groups {
-                    let groupName = group.displayName
-                    for bucket in group.buckets {
-                        if let fraction = bucket.remainingFraction {
-                            let pct = Int((fraction * 100.0).rounded())
-                            let windowDesc = bucket.window ?? (bucket.bucketId.contains("5h") ? "5-hour limit" : "weekly limit")
-                            let key = "\(groupName)-\(bucket.bucketId)"
-                            evaluateQuotaAlert(
-                                provider: "Antigravity",
-                                windowName: "\(groupName) \(windowDesc)",
-                                keySuffix: key,
-                                remainingPercent: pct
-                            )
-                        }
-                    }
-                }
-            } else {
-                if let bucket5h = primary5hBucket {
-                    evaluateQuotaAlert(provider: "Antigravity", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: bucket5h.percentage)
-                }
-                if let bucketWeekly = primaryWeeklyBucket {
-                    evaluateQuotaAlert(provider: "Antigravity", windowName: "weekly limit", keySuffix: "weekly", remainingPercent: bucketWeekly.percentage)
-                }
+            for group in quotaSummary?.groups ?? [] {
+                let lowest = group.buckets
+                    .filter { $0.remainingFraction != nil }
+                    .min { ($0.remainingFraction ?? 1) < ($1.remainingFraction ?? 1) }
+                guard let bucket = lowest else { continue }
+                let window = (bucket.window ?? bucket.bucketId).lowercased()
+                let windowDesc = window.contains("week") ? "weekly limit"
+                    : (window.contains("5h") || window.contains("hour")) ? "5-hour limit"
+                    : "limit"
+                evaluateQuotaAlert(
+                    provider: "Antigravity",
+                    windowName: "\(group.displayName) \(windowDesc)",
+                    keySuffix: group.displayName,
+                    remainingPercent: bucket.percentage,
+                    resetDate: bucket.resetDate
+                )
             }
         }
         
         // 3. Claude (Anthropic)
-        if isClaudeConnected && selectedProviders.contains(.claude) {
-            if let fiveHour = claude5hPercentage {
-                evaluateQuotaAlert(provider: "Claude", windowName: "5-hour limit", keySuffix: "5h", remainingPercent: fiveHour)
+        if isClaudeConnected && selectedProviders.contains(.claude), let limits = claudeLimits {
+            if let fiveHour = limits.fiveHourPercent {
+                evaluateQuotaAlert(provider: "Claude", windowName: "5-hour limit", keySuffix: "5h",
+                                   remainingPercent: fiveHour, resetDate: limits.fiveHourResetTime)
             }
-            if let weekly = claudeWeeklyPercentage {
-                evaluateQuotaAlert(provider: "Claude", windowName: "weekly limit", keySuffix: "weekly", remainingPercent: weekly)
+            if let weekly = limits.weeklyPercent {
+                evaluateQuotaAlert(provider: "Claude", windowName: "weekly limit", keySuffix: "weekly",
+                                   remainingPercent: weekly, resetDate: limits.weeklyResetTime)
             }
         }
         
@@ -432,13 +437,14 @@ public class QuotaService: ObservableObject {
         alertTracker.finishBaseline()
     }
     
-    private func evaluateQuotaAlert(provider: String, windowName: String? = nil, keySuffix: String = "", remainingPercent: Int) {
-        let alertKey = keySuffix.isEmpty ? provider : "\(provider)-\(keySuffix)"
+    private func evaluateQuotaAlert(provider: String, windowName: String, keySuffix: String, remainingPercent: Int, resetDate: Date?) {
+        let alertKey = "\(provider)-\(keySuffix)"
         guard alertTracker.shouldAlert(key: alertKey, remainingPercent: remainingPercent) else { return }
         NotificationManager.shared.sendLowQuotaNotification(
             provider: provider,
             remainingQuota: "\(remainingPercent)%",
-            window: windowName
+            window: windowName,
+            resetDate: resetDate
         )
     }
     
