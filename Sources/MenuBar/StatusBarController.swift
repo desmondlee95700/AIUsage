@@ -265,8 +265,8 @@ public class StatusBarController {
     }
     
     private func showPopover(_ button: NSStatusBarButton) {
-        // Refresh quotas automatically when popover is opened
-        service.refresh()
+        // Refresh quotas when the popover opens, unless that just happened
+        service.refreshIfStale()
         
         updatePopoverSize(force: false)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -328,6 +328,13 @@ public class StatusBarController {
         intervalSubItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Refresh Interval")
         intervalSubItem.submenu = intervalMenu
         menu.addItem(intervalSubItem)
+        
+        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLoginAction), keyEquivalent: "")
+        loginItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Launch at Login")
+        // Pending approval in System Settings shows as mixed until the user allows it
+        loginItem.state = LaunchAtLogin.isEnabled ? .on : (LaunchAtLogin.requiresApproval ? .mixed : .off)
+        loginItem.target = self
+        menu.addItem(loginItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -410,6 +417,30 @@ public class StatusBarController {
     @objc private func changeRefreshIntervalAction(_ sender: NSMenuItem) {
         if let interval = sender.representedObject as? RefreshInterval {
             service.refreshInterval = interval
+        }
+    }
+    
+    @objc private func toggleLaunchAtLoginAction() {
+        let enable = !LaunchAtLogin.isEnabled
+        do {
+            try LaunchAtLogin.setEnabled(enable)
+            if enable && LaunchAtLogin.requiresApproval {
+                LaunchAtLogin.openSystemSettings()
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = enable ? "Couldn't Enable Launch at Login" : "Couldn't Disable Launch at Login"
+            alert.informativeText = "\(error.localizedDescription)\n\nMake sure AIUsage is in your Applications folder, or change it in System Settings > General > Login Items."
+            alert.alertStyle = .warning
+            if let icon = AppIconHelper.appIconImage {
+                alert.icon = icon
+            }
+            alert.addButton(withTitle: "Open Login Items")
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                LaunchAtLogin.openSystemSettings()
+            }
         }
     }
     
