@@ -77,4 +77,32 @@ final class QuotaAlertTrackerTests: XCTestCase {
         XCTAssertFalse(tracker.shouldAlert(key: "a", remainingPercent: -1))
         XCTAssertTrue(tracker.shouldAlert(key: "a", remainingPercent: 20))
     }
+
+    func testCrossedThresholdReportsWhichOne() {
+        var tracker = trackerAfterBaseline(["a": 80, "b": 80])
+        XCTAssertEqual(tracker.crossedThreshold(key: "a", remainingPercent: 25), 30)
+        XCTAssertEqual(tracker.crossedThreshold(key: "a", remainingPercent: 9), 10)
+        // A rapid drop straight past both reports the critical one
+        XCTAssertEqual(tracker.crossedThreshold(key: "b", remainingPercent: 5), 10)
+        XCTAssertNil(tracker.crossedThreshold(key: "b", remainingPercent: 4))
+    }
+
+    func testCriticalOnlyModeStillAlertsAtTenAfterSuppressedThirty() {
+        var tracker = trackerAfterBaseline(["a": 80])
+        let mode = LowQuotaAlertMode.criticalOnly
+        // The 30% crossing is recorded but not sent
+        let first = tracker.crossedThreshold(key: "a", remainingPercent: 25)
+        XCTAssertFalse(first.map(mode.allows(threshold:)) ?? false)
+        let second = tracker.crossedThreshold(key: "a", remainingPercent: 8)
+        XCTAssertTrue(second.map(mode.allows(threshold:)) ?? false)
+    }
+
+    func testAlertModes() {
+        XCTAssertTrue(LowQuotaAlertMode.all.allows(threshold: 30))
+        XCTAssertTrue(LowQuotaAlertMode.all.allows(threshold: 10))
+        XCTAssertFalse(LowQuotaAlertMode.criticalOnly.allows(threshold: 30))
+        XCTAssertTrue(LowQuotaAlertMode.criticalOnly.allows(threshold: 10))
+        XCTAssertFalse(LowQuotaAlertMode.off.allows(threshold: 30))
+        XCTAssertFalse(LowQuotaAlertMode.off.allows(threshold: 10))
+    }
 }

@@ -18,7 +18,14 @@ public struct QuotaAlertTracker {
 
     /// Records a reading for `key` and returns whether an alert should be sent for it.
     public mutating func shouldAlert(key: String, remainingPercent: Int) -> Bool {
-        guard remainingPercent >= 0 else { return false }
+        crossedThreshold(key: key, remainingPercent: remainingPercent) != nil
+    }
+
+    /// Records a reading for `key` and returns the threshold (30 or 10) it just crossed, if any.
+    /// Readings are tracked even when the caller ignores the result (alerts off, or 10% only),
+    /// so turning alerts on later never fires for a drop that already happened.
+    public mutating func crossedThreshold(key: String, remainingPercent: Int) -> Int? {
+        guard remainingPercent >= 0 else { return nil }
 
         let previousPercent = lastKnownPercentages[key]
 
@@ -37,7 +44,7 @@ public struct QuotaAlertTracker {
             if !initialFired.isEmpty {
                 alertedThresholds[key] = initialFired
             }
-            return false
+            return nil
         }
 
         // 2. Always record current percentage
@@ -51,16 +58,16 @@ public struct QuotaAlertTracker {
             if remainingPercent > 30 {
                 alertedThresholds[key] = []
             }
-            return false
+            return nil
         }
 
         var fired = alertedThresholds[key] ?? []
-        var shouldAlert = false
+        var crossed: Int?
 
         // Threshold 1: <= 10% (Critical warning)
         if remainingPercent <= 10 {
             if !fired.contains(10) {
-                shouldAlert = true
+                crossed = 10
                 fired.insert(10)
                 fired.insert(30) // Mark 30% as also triggered if it dropped rapidly
             }
@@ -68,7 +75,7 @@ public struct QuotaAlertTracker {
         // Threshold 2: <= 30% (Early warning)
         else if remainingPercent <= 30 {
             if !fired.contains(30) {
-                shouldAlert = true
+                crossed = 30
                 fired.insert(30)
             }
             // If quota is between 11% and 30%, rearm 10% in case it drops further
@@ -76,6 +83,6 @@ public struct QuotaAlertTracker {
         }
 
         alertedThresholds[key] = fired
-        return shouldAlert
+        return crossed
     }
 }

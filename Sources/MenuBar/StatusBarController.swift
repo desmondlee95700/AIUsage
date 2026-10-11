@@ -366,6 +366,19 @@ public class StatusBarController {
         displaySubItem.submenu = displayMenu
         menu.addItem(displaySubItem)
         
+        let alertsMenu = NSMenu()
+        for mode in LowQuotaAlertMode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(changeAlertModeAction(_:)), keyEquivalent: "")
+            item.representedObject = mode.rawValue
+            item.state = service.alertMode == mode ? .on : .off
+            item.target = self
+            alertsMenu.addItem(item)
+        }
+        let alertsSubItem = NSMenuItem(title: "Low-Quota Alerts", action: nil, keyEquivalent: "")
+        alertsSubItem.image = NSImage(systemSymbolName: "bell.badge", accessibilityDescription: "Low-Quota Alerts")
+        alertsSubItem.submenu = alertsMenu
+        menu.addItem(alertsSubItem)
+        
         let hideEmailItem = NSMenuItem(title: "Hide Email Addresses", action: #selector(toggleHideEmailsAction), keyEquivalent: "")
         hideEmailItem.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Hide Email Addresses")
         hideEmailItem.state = UserDefaults.standard.bool(forKey: EmailMasking.defaultsKey) ? .on : .off
@@ -463,6 +476,12 @@ public class StatusBarController {
     @objc private func changeDisplayModeAction(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let mode = MenuBarDisplayMode(rawValue: raw) {
             service.displayMode = mode
+        }
+    }
+    
+    @objc private func changeAlertModeAction(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let mode = LowQuotaAlertMode(rawValue: raw) {
+            service.alertMode = mode
         }
     }
     

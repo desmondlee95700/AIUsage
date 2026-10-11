@@ -285,6 +285,13 @@ public struct TokenActivityCardView: View {
                     Text(Self.shortDateFormatter.string(from: first.day))
                 }
                 Spacer()
+                // Scale: the tallest bar's value, so heights read as amounts. Kept in the axis row,
+                // clear of the average line, which often sits near the top of the chart.
+                if activity.peakDayTotal > 0 {
+                    Text("peak \(TokenActivitySummary.formatTokens(activity.peakDayTotal))/day")
+                        .help("Tallest bar: the busiest day in this period")
+                    Spacer()
+                }
                 Text("Today")
             }
             .font(.system(size: 9.5, weight: .medium, design: .rounded))

@@ -172,6 +172,12 @@ public class QuotaService: ObservableObject {
         }
     }
     
+    @Published public var alertMode: LowQuotaAlertMode {
+        didSet {
+            UserDefaults.standard.set(alertMode.rawValue, forKey: LowQuotaAlertMode.storageKey)
+        }
+    }
+    
     @Published public var refreshInterval: RefreshInterval {
         didSet {
             UserDefaults.standard.set(refreshInterval.rawValue, forKey: "refreshInterval")
@@ -231,6 +237,8 @@ public class QuotaService: ObservableObject {
         }
         
         self.displayMode = MenuBarDisplayMode(savedValue: UserDefaults.standard.string(forKey: "menuBarDisplayMode"))
+        self.alertMode = UserDefaults.standard.string(forKey: LowQuotaAlertMode.storageKey)
+            .flatMap(LowQuotaAlertMode.init(rawValue:)) ?? .all
         
         // 0 is a real value (.manual), so distinguish "never saved" from "saved as 0"
         if UserDefaults.standard.object(forKey: "refreshInterval") != nil {
@@ -424,7 +432,9 @@ public class QuotaService: ObservableObject {
     
     private func evaluateQuotaAlert(provider: String, windowName: String, keySuffix: String, remainingPercent: Int, resetDate: Date?) {
         let alertKey = "\(provider)-\(keySuffix)"
-        guard alertTracker.shouldAlert(key: alertKey, remainingPercent: remainingPercent) else { return }
+        // Always record the reading so the tracker's state stays current while alerts are off
+        guard let threshold = alertTracker.crossedThreshold(key: alertKey, remainingPercent: remainingPercent),
+              alertMode.allows(threshold: threshold) else { return }
         NotificationManager.shared.sendLowQuotaNotification(
             provider: provider,
             remainingQuota: "\(remainingPercent)%",

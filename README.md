@@ -61,7 +61,7 @@ Download the latest pre-compiled macOS disk image:
 | :--- | :--- |
 | 🎛️ **Flexible Provider Focus** | Toggle any combination of active models (Antigravity, ChatGPT, Claude) with persistent in-menu checkboxes and an in-popover filter slider. |
 | 📊 **Menu Bar Telemetry** | Shows each provider's **lowest** remaining limit side by side (e.g. `78% · 90% · 4%`), so a full 5-hour window can't hide an exhausted weekly one. A ⚠︎ marks anything at 10% or below, providers that are off are dimmed, and the hover tooltip breaks down every window. Prefer a quieter bar? Switch to **Icon Only**. |
-| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. |
+| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. Choose 30% and 10%, 10% only, or off. |
 | 📈 **Token Activity** | 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs (desktop app and CLI). |
 | 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients and viscous spring mechanics. The popover keeps a fixed height (shrinking on small screens), so switching providers never resizes it; when a page runs longer, the bottom edge fades and a chevron scrolls you to the rest. |
 | 🔒 **Private by Design** | Zero telemetry, zero LLM prompts consumed, and no credentials saved. Antigravity and ChatGPT are read locally; Claude usage is fetched from Anthropic's own usage endpoints using your existing sign-in. |
@@ -110,7 +110,7 @@ open AIUsage.app
 | **Freshness** | Status Pill | How old the numbers on screen are; turns amber when they've missed several refreshes. |
 | **Refresh Quotas** | `arrow.clockwise` (🔄) | Runs spring-animated icon spin and forces local service re-discovery and quota poll. |
 | **Update Available** | `arrow.down` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
-| **More** | `ellipsis` (⋯) | Refresh interval, menu bar style, Launch at Login, Hide Email Addresses, Check for Updates and Quit. |
+| **More** | `ellipsis` (⋯) | Refresh interval, menu bar style, low-quota alerts, Launch at Login, Hide Email Addresses, Open App, Check for Updates and Quit. |
 
 A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure your menu bar is showing.
 
@@ -126,6 +126,7 @@ A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure you
 | — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
 | — | **Refresh Interval** | Configure automatic polling cadence (30s, 1m, 2m, 5m, or Manual). |
 | — | **Menu Bar** | Show Percentages, or Icon Only. |
+| — | **Low-Quota Alerts** | At 30% and 10% (default), at 10% only, or off. |
 | — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
 | — | **Hide Email Addresses** | Masks account emails in the popover, for screenshots and screen sharing. |
 | — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |

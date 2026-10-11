@@ -504,6 +504,32 @@ public enum MenuBarDisplayMode: String, CaseIterable, Codable {
     }
 }
 
+/// Which low-quota notifications to send. Thresholds match the gauge colours (amber at 30%, red at 10%).
+public enum LowQuotaAlertMode: String, CaseIterable, Codable {
+    case all = "all"
+    case criticalOnly = "critical"
+    case off = "off"
+    
+    public static let storageKey = "lowQuotaAlertMode"
+    
+    public var title: String {
+        switch self {
+        case .all: return "At 30% and 10%"
+        case .criticalOnly: return "At 10% Only"
+        case .off: return "Off"
+        }
+    }
+    
+    /// Whether crossing `threshold` (30 or 10) should send a notification
+    public func allows(threshold: Int) -> Bool {
+        switch self {
+        case .all: return true
+        case .criticalOnly: return threshold <= 10
+        case .off: return false
+        }
+    }
+}
+
 public enum RefreshInterval: Int, CaseIterable, Codable {
     case thirtySeconds = 30
     case oneMinute = 60
