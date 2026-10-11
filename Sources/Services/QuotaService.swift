@@ -230,22 +230,7 @@ public class QuotaService: ObservableObject {
             self.dualActiveProvider = first
         }
         
-        let savedMode = UserDefaults.standard.string(forKey: "menuBarDisplayMode")
-        var mode: MenuBarDisplayMode
-        if savedMode == "Dual: ✦ Gemini · ✷ ChatGPT" || savedMode == "Dual (Antigravity & ChatGPT)" {
-            mode = .dual
-        } else if savedMode == "Active Provider Quota" || savedMode == "Active Provider Only" {
-            mode = .activeProvider
-        } else if savedMode == "Gemini Weekly Only" || savedMode == "Antigravity Weekly Only" {
-            mode = .weekly
-        } else {
-            mode = MenuBarDisplayMode(rawValue: savedMode ?? "") ?? .dual
-        }
-        let totalInstalled = (geminiInst ? 1 : 0) + (codexInst ? 1 : 0) + (claudeInst ? 1 : 0)
-        if mode == .dual && totalInstalled < 2 {
-            mode = .activeProvider
-        }
-        self.displayMode = mode
+        self.displayMode = MenuBarDisplayMode(savedValue: UserDefaults.standard.string(forKey: "menuBarDisplayMode"))
         
         // 0 is a real value (.manual), so distinguish "never saved" from "saved as 0"
         if UserDefaults.standard.object(forKey: "refreshInterval") != nil {

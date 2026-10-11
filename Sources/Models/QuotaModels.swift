@@ -118,12 +118,16 @@ public struct QuotaBucket: Codable, Identifiable {
         }
     }
     
+    /// Live countdown from the reset time. The server's description is static text, so it's only
+    /// used when there's no timestamp to count down to.
     public var formattedResetCountdown: String? {
+        if let target = resetDate {
+            return DateParsing.countdown(until: target).map { "Resets in \($0)" } ?? "Resets soon"
+        }
         if let desc = description, !desc.isEmpty {
             return desc
         }
-        guard let target = resetDate else { return nil }
-        return DateParsing.countdown(until: target).map { "Resets in \($0)" } ?? "Resets soon"
+        return nil
     }
     
     public var resetDate: Date? {
@@ -481,10 +485,23 @@ public struct CodexDailyUsageBucket: Codable, Identifiable {
 // MARK: - App Preferences
 
 public enum MenuBarDisplayMode: String, CaseIterable, Codable {
-    case dual = "Dual (Antigravity & ChatGPT)"
-    case activeProvider = "Active Provider Only"
-    case weekly = "Antigravity Weekly Only"
+    /// Each selected provider's icon and lowest remaining limit
+    case percentages = "Percentages"
+    /// Provider icons only, for a quieter or more private menu bar
     case iconOnly = "Icon Only"
+    
+    public var title: String {
+        switch self {
+        case .percentages: return "Show Percentages"
+        case .iconOnly: return "Icon Only"
+        }
+    }
+    
+    /// Reads a saved preference. Values from older versions (the dual, active-provider and
+    /// weekly-only modes, which all showed percentages) map to `.percentages`.
+    public init(savedValue: String?) {
+        self = savedValue == MenuBarDisplayMode.iconOnly.rawValue ? .iconOnly : .percentages
+    }
 }
 
 public enum RefreshInterval: Int, CaseIterable, Codable {

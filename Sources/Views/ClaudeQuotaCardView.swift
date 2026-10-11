@@ -18,6 +18,8 @@ public struct ClaudeQuotaCardView: View {
     private let tint = LiquidGlassPalette.claude
     
     private struct LimitTile {
+        enum Kind { case fiveHour, weekly, model }
+        var kind: Kind = .model
         let title: String
         let caption: String
         let remainingPercent: Int
@@ -29,6 +31,7 @@ public struct ClaudeQuotaCardView: View {
         var list: [LimitTile] = []
         if limits.hasFiveHourWindow {
             list.append(LimitTile(
+                kind: .fiveHour,
                 title: "5-Hour",
                 caption: "Rolling burst window",
                 remainingPercent: limits.fiveHourRemainingPercent,
@@ -38,6 +41,7 @@ public struct ClaudeQuotaCardView: View {
         }
         if limits.hasWeeklyWindow {
             list.append(LimitTile(
+                kind: .weekly,
                 title: "Weekly",
                 caption: "All models",
                 remainingPercent: limits.weeklyRemainingPercent,
@@ -111,7 +115,8 @@ public struct ClaudeQuotaCardView: View {
                                 caption: nil,
                                 fraction: Double(item.remainingPercent) / 100.0,
                                 resetText: item.reset,
-                                resetDate: item.resetDate
+                                resetDate: item.resetDate,
+                                isInMenuBar: item.kind == (limits.isWeeklyBinding ? .weekly : .fiveHour)
                             )
                             .help(item.caption)
                         }

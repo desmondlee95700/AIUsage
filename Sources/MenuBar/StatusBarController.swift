@@ -353,6 +353,19 @@ public class StatusBarController {
         loginItem.target = self
         menu.addItem(loginItem)
         
+        let displayMenu = NSMenu()
+        for mode in MenuBarDisplayMode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(changeDisplayModeAction(_:)), keyEquivalent: "")
+            item.representedObject = mode.rawValue
+            item.state = service.displayMode == mode ? .on : .off
+            item.target = self
+            displayMenu.addItem(item)
+        }
+        let displaySubItem = NSMenuItem(title: "Menu Bar", action: nil, keyEquivalent: "")
+        displaySubItem.image = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "Menu Bar")
+        displaySubItem.submenu = displayMenu
+        menu.addItem(displaySubItem)
+        
         let hideEmailItem = NSMenuItem(title: "Hide Email Addresses", action: #selector(toggleHideEmailsAction), keyEquivalent: "")
         hideEmailItem.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Hide Email Addresses")
         hideEmailItem.state = UserDefaults.standard.bool(forKey: EmailMasking.defaultsKey) ? .on : .off
@@ -445,6 +458,12 @@ public class StatusBarController {
     
     @objc private func toggleLaunchAtLoginAction() {
         LaunchAtLogin.toggle()
+    }
+    
+    @objc private func changeDisplayModeAction(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let mode = MenuBarDisplayMode(rawValue: raw) {
+            service.displayMode = mode
+        }
     }
     
     @objc private func toggleHideEmailsAction() {

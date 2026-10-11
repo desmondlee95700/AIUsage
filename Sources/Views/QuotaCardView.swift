@@ -2,9 +2,12 @@ import SwiftUI
 
 public struct QuotaCardView: View {
     public let group: QuotaGroup
+    /// Bucket the menu bar shows, when it belongs to this group
+    public let menuBarBucketId: String?
 
-    public init(group: QuotaGroup) {
+    public init(group: QuotaGroup, menuBarBucketId: String? = nil) {
         self.group = group
+        self.menuBarBucketId = menuBarBucketId
     }
 
     private let tint = LiquidGlassPalette.antigravity
@@ -22,7 +25,7 @@ public struct QuotaCardView: View {
 
             VStack(spacing: 4) {
                 ForEach(group.buckets) { bucket in
-                    QuotaBucketRowView(bucket: bucket)
+                    QuotaBucketRowView(bucket: bucket, isInMenuBar: bucket.bucketId == menuBarBucketId)
                 }
             }
             .padding(6)
@@ -33,10 +36,22 @@ public struct QuotaCardView: View {
 
 public struct QuotaBucketRowView: View {
     public let bucket: QuotaBucket
+    public let isInMenuBar: Bool
     @State private var isHovered: Bool = false
 
-    public init(bucket: QuotaBucket) {
+    public init(bucket: QuotaBucket, isInMenuBar: Bool = false) {
         self.bucket = bucket
+        self.isInMenuBar = isInMenuBar
+    }
+    
+    /// Exact reset time, plus the server's description when the countdown has taken its place
+    private var resetHelp: String {
+        var parts: [String] = []
+        if let date = bucket.resetDate {
+            parts.append("Resets \(DateParsing.exact(date))")
+            if let desc = bucket.description, !desc.isEmpty { parts.append(desc) }
+        }
+        return parts.joined(separator: "\n")
     }
 
     public var body: some View {
@@ -55,6 +70,10 @@ public struct QuotaBucketRowView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(LiquidGlassText.primary)
                     .lineLimit(1)
+                
+                if isInMenuBar {
+                    MenuBarMarker()
+                }
 
                 Spacer(minLength: 6)
 
@@ -75,7 +94,7 @@ public struct QuotaBucketRowView: View {
                         Text(resetInfo)
                             .font(.system(size: 10.5))
                             .fixedSize(horizontal: false, vertical: true)
-                            .help(bucket.resetDate.map { "Resets \(DateParsing.exact($0))" } ?? "")
+                            .help(resetHelp)
                         Spacer(minLength: 4)
                         if level.needsAttention {
                             Text(level.label)

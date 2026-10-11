@@ -221,6 +221,26 @@ public struct GlassIconButton: View {
     }
 }
 
+// MARK: - Menu Bar Marker
+
+/// Small glyph beside the limit the menu bar is showing, so a figure like "87%" up there can be
+/// matched to its window without comparing numbers.
+/// Hidden in icon-only mode, where the menu bar shows no figures.
+public struct MenuBarMarker: View {
+    @AppStorage("menuBarDisplayMode") private var displayMode = MenuBarDisplayMode.percentages.rawValue
+
+    public init() {}
+
+    public var body: some View {
+        if MenuBarDisplayMode(savedValue: displayMode) == .percentages {
+            Image(systemName: "menubar.rectangle")
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundColor(LiquidGlassText.tertiary)
+                .help("This is the figure shown in your menu bar")
+        }
+    }
+}
+
 // MARK: - Overflow Scroll View
 
 /// Vertical scroll view for the fixed-height popover. Scroll indicators stay hidden for the glass
@@ -462,15 +482,18 @@ public struct QuotaTile: View {
     public let resetText: String?
     /// Exact reset time, shown on hover behind the relative countdown
     public let resetDate: Date?
+    /// Whether this is the limit the menu bar shows for the provider
+    public let isInMenuBar: Bool
 
     @State private var isHovered = false
 
-    public init(title: String, caption: String?, fraction: Double, resetText: String?, resetDate: Date? = nil) {
+    public init(title: String, caption: String?, fraction: Double, resetText: String?, resetDate: Date? = nil, isInMenuBar: Bool = false) {
         self.title = title
         self.caption = caption
         self.fraction = fraction
         self.resetText = resetText
         self.resetDate = resetDate
+        self.isInMenuBar = isInMenuBar
     }
 
     public var body: some View {
@@ -481,11 +504,16 @@ public struct QuotaTile: View {
                 .padding(.top, 2)
 
             VStack(spacing: 2) {
-                Text(title)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(LiquidGlassText.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(LiquidGlassText.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    if isInMenuBar {
+                        MenuBarMarker()
+                    }
+                }
 
                 if let caption = caption {
                     Text(caption)

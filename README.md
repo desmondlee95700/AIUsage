@@ -51,7 +51,7 @@ Download the latest pre-compiled macOS disk image:
 | :--- | :--- | :--- | :---: | :---: |
 | <img src="Assets/AntigravityIcon.png" width="18" height="18" valign="middle" /> **Google Antigravity** | • Rolling 5-Hour Limit<br>• Weekly Quota Limit<br>• Prompt & Flow Credits<br>• Google Account Tier & Email | Local Connect-RPC (`127.0.0.1`) | **0 Tokens** | ✅ Instant |
 | <img src="Assets/ChatGPTIcon.png" width="18" height="18" valign="middle" /> **OpenAI ChatGPT** | • 5-Hour Burst Limit<br>• Weekly Quota Limit<br>• Reset Credit Redemption<br>• OpenAI Plan & Email | Local Codex JSON-RPC stdio | **0 Tokens** | ✅ Instant |
-| <img src="Assets/ClaudeIcon.png" width="18" height="18" valign="middle" /> **Anthropic Claude** | • 5-Hour Rolling Burst<br>• Weekly Quota Limit<br>• Claude 3.7 Sonnet Allocation<br>• Free Tier Dynamic Capacity | Local Desktop Session Cookies | **0 Tokens** | ✅ Instant |
+| <img src="Assets/ClaudeIcon.png" width="18" height="18" valign="middle" /> **Anthropic Claude** | • 5-Hour Rolling Limit<br>• Weekly Quota Limit<br>• Sonnet & Opus Weekly Limits (when your plan has them)<br>• Extra Usage Credits<br>• Claude Plan & Email | Desktop session / Claude Code sign-in | **0 Tokens** | ✅ Instant |
 
 <br />
 
@@ -60,8 +60,10 @@ Download the latest pre-compiled macOS disk image:
 | Feature | Description |
 | :--- | :--- |
 | 🎛️ **Flexible Provider Focus** | Toggle any combination of active models (Antigravity, ChatGPT, Claude) with persistent in-menu checkboxes and an in-popover filter slider. |
-| 📊 **Menu Bar Telemetry** | Displays side-by-side metrics (e.g. `78% · 90% · Free`) with native template glyphs and detailed multi-model hover tooltips. |
-| 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients, viscous spring mechanics, and auto-expanding popover without scrollbars. |
+| 📊 **Menu Bar Telemetry** | Shows each provider's **lowest** remaining limit side by side (e.g. `78% · 90% · 4%`), so a full 5-hour window can't hide an exhausted weekly one. A ⚠︎ marks anything at 10% or below, providers that are off are dimmed, and the hover tooltip breaks down every window. Prefer a quieter bar? Switch to **Icon Only**. |
+| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. |
+| 📈 **Token Activity** | 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs (desktop app and CLI). |
+| 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients and viscous spring mechanics. The popover keeps a fixed height (shrinking on small screens), so switching providers never resizes it; when a page runs longer, the bottom edge fades and a chevron scrolls you to the rest. |
 | 🔒 **Private by Design** | Zero telemetry, zero LLM prompts consumed, and no credentials saved. Antigravity and ChatGPT are read locally; Claude usage is fetched from Anthropic's own usage endpoints using your existing sign-in. |
 | 🔄 **Auto-Discovery & Recovery** | Automatically detects running desktop instances and seamlessly reconnects whenever any AI application is launched or restarted. |
 
@@ -94,7 +96,7 @@ open AIUsage.app
 | :--- | :--- | :--- |
 | **Left-Click** | Menu Bar Item | Opens or dismisses the Liquid Glass quota inspector popover. |
 | **Right-Click** / **Control-Click** | Menu Bar Item | Opens the full macOS context menu with quick settings and actions. |
-| **Hover** | Menu Bar Item | Displays a multi-model tool tip with real-time percentage and credit summaries. |
+| **Hover** | Menu Bar Item | Displays a multi-model tool tip with every limit, its reset time, and what to do when a provider is offline. |
 | **Option (⌥) + Click** | Provider Item | Solo Mode: Instantly selects only that provider in the focus menu. |
 
 <br />
@@ -104,10 +106,13 @@ open AIUsage.app
 | Control | Icon | Action |
 | :--- | :---: | :--- |
 | **Provider Filter** | `slider.horizontal.3` | Opens multi-select popover to toggle active providers without closing the menu. |
-| **Provider Switcher** | Segment Tabs | Smoothly toggles active provider dashboards (Antigravity, ChatGPT, Claude) with zero height shift. |
+| **Provider Switcher** | Segment Tabs | Toggles provider dashboards (Antigravity, ChatGPT, Claude) with zero height shift. Each tab shows the menu bar figure, marked "weekly" when it comes from the weekly limit. |
+| **Freshness** | Status Pill | How old the numbers on screen are; turns amber when they've missed several refreshes. |
 | **Refresh Quotas** | `arrow.clockwise` (🔄) | Runs spring-animated icon spin and forces local service re-discovery and quota poll. |
-| **Update Available** | `arrow.down.circle` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
-| **Quit AIUsage** | `power` (⏻) | Immediately and cleanly terminates the background menu bar application. |
+| **Update Available** | `arrow.down` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
+| **More** | `ellipsis` (⋯) | Refresh interval, menu bar style, Launch at Login, Hide Email Addresses, Check for Updates and Quit. |
+
+A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure your menu bar is showing.
 
 <br />
 
@@ -120,7 +125,9 @@ open AIUsage.app
 | <kbd>⌘</kbd> <kbd>Q</kbd> | **Quit AIUsage** | Terminates the application. |
 | — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
 | — | **Refresh Interval** | Configure automatic polling cadence (30s, 1m, 2m, 5m, or Manual). |
+| — | **Menu Bar** | Show Percentages, or Icon Only. |
 | — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
+| — | **Hide Email Addresses** | Masks account emails in the popover, for screenshots and screen sharing. |
 | — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |
 
 ---

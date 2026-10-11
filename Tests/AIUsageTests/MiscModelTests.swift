@@ -64,8 +64,18 @@ final class QuotaBucketTests: XCTestCase {
         XCTAssertEqual(bucket(fraction: nil).formattedPercentage, "N/A")
     }
 
-    func testResetCountdownPrefersServerDescription() {
+    func testResetCountdownUsesDescriptionOnlyWithoutTimestamp() {
         XCTAssertEqual(bucket(fraction: 1, description: "Resets Monday").formattedResetCountdown, "Resets Monday")
+        // A timestamp gives a live countdown, which beats static server text
+        let future = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 3600 + 90))
+        XCTAssertEqual(bucket(fraction: 1, description: "Resets Monday", resetTime: future).formattedResetCountdown, "Resets in 3h 1m")
+    }
+
+    func testMenuBarDisplayModeMigration() {
+        XCTAssertEqual(MenuBarDisplayMode(savedValue: "Icon Only"), .iconOnly)
+        for old in ["Dual (Antigravity & ChatGPT)", "Active Provider Only", "Antigravity Weekly Only", "Percentages", nil] as [String?] {
+            XCTAssertEqual(MenuBarDisplayMode(savedValue: old), .percentages, old ?? "nil")
+        }
     }
 
     func testResetCountdownFromTimestamp() {

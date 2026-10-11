@@ -312,6 +312,11 @@ public struct MainUsageView: View {
                 get: { LaunchAtLogin.isEnabled },
                 set: { _ in LaunchAtLogin.toggle() }
             ))
+            Picker("Menu Bar", selection: $service.displayMode) {
+                ForEach(MenuBarDisplayMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
             Toggle("Hide Email Addresses", isOn: $hideEmails)
             Divider()
             Button("Check for Updates…") {
@@ -558,8 +563,12 @@ public struct MainUsageView: View {
             
             // Quota Models (all groups including Claude and GPT)
             if let groups = service.quotaSummary?.groups {
+                let primaryGroupName = service.quotaSummary?.primaryGroup?.displayName
                 ForEach(groups) { group in
-                    QuotaCardView(group: group)
+                    QuotaCardView(
+                        group: group,
+                        menuBarBucketId: group.displayName == primaryGroupName ? service.quotaSummary?.bindingBucket?.bucketId : nil
+                    )
                 }
             }
         }

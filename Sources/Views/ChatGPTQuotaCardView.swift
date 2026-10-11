@@ -88,6 +88,14 @@ public struct ChatGPTQuotaCardView: View {
         return current + "This uses 1 reset credit to restore your ChatGPT rate limits now. It can't be undone."
     }
     
+    /// Position of the window the menu bar shows (the one with the least left; ties go to the shorter window)
+    private func menuBarWindowIndex(in items: [(title: String, window: CodexRateLimitWindow)]) -> Int? {
+        guard let binding = rateLimits?.rateLimits?.bindingWindow else { return nil }
+        return items.firstIndex {
+            $0.window.windowDurationMins == binding.windowDurationMins && $0.window.usedPercent == binding.usedPercent
+        }
+    }
+    
     // MARK: - Quota Section
     
     private var quotaSection: some View {
@@ -112,7 +120,8 @@ public struct ChatGPTQuotaCardView: View {
                                 caption: nil,
                                 fraction: item.window.remainingFraction,
                                 resetText: item.window.formattedResetCountdown,
-                                resetDate: item.window.resetDate
+                                resetDate: item.window.resetDate,
+                                isInMenuBar: index == menuBarWindowIndex(in: items)
                             )
                         }
                     }
