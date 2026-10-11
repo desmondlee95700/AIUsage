@@ -30,11 +30,12 @@ public struct ChatGPTQuotaCardView: View {
         return all
     }
     
-    private var upgradeText: String {
-        let plan = account?.planType?.lowercased() ?? "free"
-        return plan == "free"
-            ? "Upgrade to Plus or Pro for higher rate limits."
-            : "Manage subscription or upgrade for higher limits."
+    /// Free plans see an upgrade link; paid plans manage their subscription on the same page.
+    private var planLink: ProviderPlanCard.PlanLink? {
+        let isFree = (account?.planType?.lowercased() ?? "free") == "free"
+        return URL(string: "https://chatgpt.com/#pricing").map {
+            .init(title: isFree ? "Upgrade plan" : "Manage plan", url: $0)
+        }
     }
     
     public var body: some View {
@@ -45,10 +46,9 @@ public struct ChatGPTQuotaCardView: View {
                 systemFallback: "circle.hexagongrid.fill",
                 planName: account?.formattedPlan ?? "ChatGPT Free",
                 email: account?.email,
-                detail: upgradeText,
-                launchHelp: "Launch ChatGPT desktop app",
+                appName: "ChatGPT",
                 onLaunch: { CodexDiscovery.launchChatGPTApp() },
-                onUpgrade: openChatGPTUpgrade
+                planLink: planLink
             )
             
             quotaSection
@@ -81,12 +81,6 @@ public struct ChatGPTQuotaCardView: View {
         }
     }
     
-    private func openChatGPTUpgrade() {
-        if let url = URL(string: "https://chatgpt.com/#pricing") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-    
     // MARK: - Quota Section
     
     private var quotaSection: some View {
@@ -108,7 +102,7 @@ public struct ChatGPTQuotaCardView: View {
                             let item = items[index]
                             QuotaTile(
                                 title: item.title,
-                                caption: "\(item.window.usedPercent)% used · \(item.window.formattedDuration)",
+                                caption: nil,
                                 fraction: item.window.remainingFraction,
                                 resetText: item.window.formattedResetCountdown
                             )

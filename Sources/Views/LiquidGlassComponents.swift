@@ -277,15 +277,22 @@ public struct LiquidRingGauge: View {
                 .shadow(color: level.color.opacity(0.55), radius: lineWidth * 0.8, x: 0, y: 0)
 
             if showsLabel {
-                HStack(alignment: .firstTextBaseline, spacing: 0.5) {
-                    Text("\(Int((fraction * 100).rounded()))")
-                        .font(.system(size: size * 0.27, weight: .bold, design: .rounded))
-                        .foregroundColor(LiquidGlassText.primary)
-                    Text("%")
-                        .font(.system(size: size * 0.15, weight: .semibold, design: .rounded))
+                VStack(spacing: -1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 0.5) {
+                        Text("\(Int((fraction * 100).rounded()))")
+                            .font(.system(size: size * 0.27, weight: .bold, design: .rounded))
+                            .foregroundColor(LiquidGlassText.primary)
+                        Text("%")
+                            .font(.system(size: size * 0.15, weight: .semibold, design: .rounded))
+                            .foregroundColor(LiquidGlassText.tertiary)
+                    }
+                    .monospacedDigit()
+                    
+                    // Says which way the number runs, so tiles don't need a separate "% used" line
+                    Text("left")
+                        .font(.system(size: size * 0.13, weight: .medium, design: .rounded))
                         .foregroundColor(LiquidGlassText.tertiary)
                 }
-                .monospacedDigit()
             }
         }
         .frame(width: size, height: size)
@@ -391,7 +398,9 @@ public struct QuotaTile: View {
                 }
             }
 
-            GlassChip(level.label, tint: level.color)
+            if level.needsAttention {
+                GlassChip(level.label, tint: level.color)
+            }
 
             if let resetText = resetText {
                 HStack(alignment: .top, spacing: 3) {
@@ -406,7 +415,8 @@ public struct QuotaTile: View {
                 .foregroundColor(LiquidGlassText.tertiary)
             }
         }
-        .frame(maxWidth: .infinity)
+        // Fill the row's height so a tile without a status chip matches its neighbour
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
         .background(
@@ -447,6 +457,7 @@ public struct QuotaTileGrid<Tile: View>: View {
                         tile(index)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -454,114 +465,88 @@ public struct QuotaTileGrid<Tile: View>: View {
 
 // MARK: - Provider Plan Card
 
-/// Account card shared by all providers: glowing app icon, plan, tier chip, email, description and actions.
+/// Compact account strip shared by all providers: which plan and account the limits below belong to.
+/// Kept to one row so the limits, not the account, lead the popover; app and plan actions sit in a
+/// small glass cluster on the trailing edge.
 public struct ProviderPlanCard: View {
+    /// A browser link for the plan, e.g. "Manage plan" for paid tiers or "Upgrade plan" for free ones.
+    public struct PlanLink {
+        public let title: String
+        public let url: URL
+
+        public init(title: String, url: URL) {
+            self.title = title
+            self.url = url
+        }
+    }
+
     public let provider: AIProvider
     public let icon: NSImage?
     public let systemFallback: String
     public let planName: String
-    public let tierBadge: String?
     public let email: String?
-    public let detail: String
-    public let launchHelp: String
+    public let appName: String
     public let onLaunch: () -> Void
-    public let onUpgrade: (() -> Void)?
+    public let planLink: PlanLink?
 
     public init(
         provider: AIProvider,
         icon: NSImage?,
         systemFallback: String,
         planName: String,
-        tierBadge: String? = nil,
         email: String?,
-        detail: String,
-        launchHelp: String,
+        appName: String,
         onLaunch: @escaping () -> Void,
-        onUpgrade: (() -> Void)?
+        planLink: PlanLink?
     ) {
         self.provider = provider
         self.icon = icon
         self.systemFallback = systemFallback
         self.planName = planName
-        self.tierBadge = tierBadge
         self.email = email
-        self.detail = detail
-        self.launchHelp = launchHelp
+        self.appName = appName
         self.onLaunch = onLaunch
-        self.onUpgrade = onUpgrade
+        self.planLink = planLink
     }
 
     private var tint: Color { LiquidGlassPalette.accent(for: provider) }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 11) {
-                ProviderIconBadge(icon: icon, systemFallback: systemFallback, tint: tint, size: 40)
+        HStack(spacing: 10) {
+            ProviderIconBadge(icon: icon, systemFallback: systemFallback, tint: tint, size: 28)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(planName)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(LiquidGlassText.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(planName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.primary)
+                    .lineLimit(1)
 
-                        if let tierBadge = tierBadge {
-                            GlassChip(tierBadge, tint: tint)
-                        }
-                    }
-
-                    Text(provider.fullName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(LiquidGlassText.tertiary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            if let email = email, !email.isEmpty {
-                HStack(spacing: 5) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(tint)
+                if let email = email, !email.isEmpty {
                     Text(email)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundColor(LiquidGlassText.secondary)
+                        .font(.system(size: 11))
+                        .foregroundColor(LiquidGlassText.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                )
             }
 
-            Text(detail)
-                .font(.system(size: 11))
-                .foregroundColor(LiquidGlassText.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
 
-            HStack(spacing: 8) {
-                GlassCapsuleButton("Launch App", systemImage: "arrow.up.forward.app", size: .small, help: launchHelp, action: onLaunch)
-                Spacer(minLength: 0)
-                if let onUpgrade = onUpgrade {
-                    GlassCapsuleButton(
-                        "Upgrade",
-                        trailingSystemImage: "arrow.up.forward",
-                        style: .prominent(tint),
-                        size: .small,
-                        help: "Upgrade \(provider.displayName) subscription",
-                        action: onUpgrade
-                    )
+            HStack(spacing: 0) {
+                GlassIconButton(systemImage: "arrow.up.forward.app", help: "Open \(appName)", action: onLaunch)
+                if let planLink = planLink {
+                    GlassIconButton(systemImage: "creditcard", help: planLink.title) {
+                        NSWorkspace.shared.open(planLink.url)
+                    }
                 }
             }
+            .padding(2)
+            .liquidGlassPill()
         }
-        .padding(14)
-        .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .liquidGlassCard(cornerRadius: 14, tint: tint, material: .thinMaterial)
     }
 }
 

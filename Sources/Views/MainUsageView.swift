@@ -114,6 +114,28 @@ public struct MainUsageView: View {
         return LiquidGlassPalette.aiBlue
     }
 
+    /// Header status: data age when something is connected, with the dot showing health
+    /// (blue while refreshing, amber once stale or offline).
+    private func headerStatus(now: Date) -> (text: String, color: Color) {
+        let selected = service.selectedInstalledProviders
+        guard !selected.isEmpty else { return ("No tools", Color.gray) }
+        guard selected.contains(where: service.isProviderConnected) else {
+            return service.isLoading
+                ? ("Connecting…", LiquidGlassPalette.aiBlue)
+                : ("Offline", LiquidGlassPalette.moderate)
+        }
+        let text = Freshness.label(lastUpdated: service.lastUpdated, now: now)
+        if service.isLoading {
+            return (text, LiquidGlassPalette.aiBlue)
+        }
+        let stale = Freshness.isStale(
+            lastUpdated: service.lastUpdated,
+            refreshInterval: TimeInterval(service.refreshInterval.rawValue),
+            now: now
+        )
+        return (text, stale ? LiquidGlassPalette.moderate : LiquidGlassPalette.healthy)
+    }
+    
     /// Hairline that fades out at both ends, like light along a glass edge
     private var specularDivider: some View {
         LinearGradient(
@@ -177,31 +199,29 @@ public struct MainUsageView: View {
                 }
             }
             
-            // Connection Status Pill
-            let (statusText, statusColor): (String, Color) = {
-                let selected = service.selectedInstalledProviders
-                if selected.isEmpty {
-                    return ("No Tools", Color.gray)
+            // Freshness pill: how current the numbers are, re-rendered as they age.
+            // The dot carries connection health; hover lists each provider's status.
+            TimelineView(.periodic(from: .now, by: 10)) { context in
+                let status = headerStatus(now: context.date)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(status.color)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: status.color.opacity(0.80), radius: 3, x: 0, y: 0)
+                    
+                    Text(status.text)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundColor(LiquidGlassText.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
-                let live = selected.contains { service.isProviderConnected($0) }
-                return (live ? "Live" : "Offline", live ? LiquidGlassPalette.healthy : LiquidGlassPalette.moderate)
-            }()
-            
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-                    .shadow(color: statusColor.opacity(0.80), radius: 3, x: 0, y: 0)
-                
-                Text(statusText)
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundColor(LiquidGlassText.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .liquidGlassPill(isProminent: false, tint: status.color)
+                .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: status.text)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3.5)
-            .liquidGlassPill(isProminent: false, tint: statusColor)
+            .help(service.menuBarTooltip)
             
             Spacer(minLength: 4)
             

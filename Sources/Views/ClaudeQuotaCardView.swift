@@ -21,7 +21,6 @@ public struct ClaudeQuotaCardView: View {
         let title: String
         let caption: String
         let remainingPercent: Int
-        let usedPercent: Int
         let reset: String?
     }
     
@@ -32,7 +31,6 @@ public struct ClaudeQuotaCardView: View {
                 title: "5-Hour",
                 caption: "Rolling burst window",
                 remainingPercent: limits.fiveHourRemainingPercent,
-                usedPercent: limits.fiveHourUsedPercent,
                 reset: limits.formattedFiveHourCountdown
             ))
         }
@@ -41,7 +39,6 @@ public struct ClaudeQuotaCardView: View {
                 title: "Weekly",
                 caption: "All models",
                 remainingPercent: limits.weeklyRemainingPercent,
-                usedPercent: limits.weeklyUsedPercent,
                 reset: limits.formattedWeeklyCountdown
             ))
         }
@@ -50,7 +47,6 @@ public struct ClaudeQuotaCardView: View {
                 title: "Sonnet",
                 caption: "Weekly dedicated quota",
                 remainingPercent: sonnet,
-                usedPercent: 100 - sonnet,
                 reset: limits.formattedWeeklyCountdown
             ))
         }
@@ -64,12 +60,10 @@ public struct ClaudeQuotaCardView: View {
                 icon: AppIconHelper.claudeIcon,
                 systemFallback: "asterisk",
                 planName: account?.formattedTier ?? "Claude Free",
-                tierBadge: account?.tierBadge ?? "Free",
                 email: account?.emailAddress,
-                detail: account?.tierDescription ?? "Free tier uses dynamic server capacity cooldowns. Upgrade to Claude Pro for full quota limits.",
-                launchHelp: "Launch Claude desktop app",
+                appName: "Claude",
                 onLaunch: { ClaudeDiscovery.launchClaudeApp() },
-                onUpgrade: openClaudeUpgrade
+                planLink: planLink
             )
             
             quotaSection
@@ -99,7 +93,7 @@ public struct ClaudeQuotaCardView: View {
                             let item = items[index]
                             QuotaTile(
                                 title: item.title,
-                                caption: "\(item.usedPercent)% used",
+                                caption: nil,
                                 fraction: Double(item.remainingPercent) / 100.0,
                                 resetText: item.reset
                             )
@@ -185,9 +179,10 @@ public struct ClaudeQuotaCardView: View {
         }
     }
     
-    private func openClaudeUpgrade() {
-        if let url = URL(string: "https://claude.ai/upgrade") {
-            NSWorkspace.shared.open(url)
-        }
+    /// Paid plans manage billing; free plans see the upgrade page.
+    private var planLink: ProviderPlanCard.PlanLink? {
+        account?.canSeeUsageLimits == true
+            ? URL(string: "https://claude.ai/settings/billing").map { .init(title: "Manage plan", url: $0) }
+            : URL(string: "https://claude.ai/upgrade").map { .init(title: "Upgrade plan", url: $0) }
     }
 }

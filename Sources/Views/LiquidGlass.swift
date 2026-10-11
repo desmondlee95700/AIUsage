@@ -88,17 +88,24 @@ public enum LiquidGlassText {
 // MARK: - Quota Level
 
 /// Health band for a remaining-quota fraction, shared by gauges, meters and chips.
+/// Remaining-quota bands. The boundaries match the low-quota alerts (30% and 10%, see
+/// `QuotaAlertTracker`), so a gauge turns amber exactly when the first alert would fire.
 public enum QuotaLevel {
     case healthy, moderate, critical
 
     public init(fraction: Double) {
-        if fraction >= 0.5 {
+        if fraction > 0.3 {
             self = .healthy
-        } else if fraction >= 0.2 {
+        } else if fraction > 0.1 {
             self = .moderate
         } else {
             self = .critical
         }
+    }
+    
+    /// Healthy quota needs no label; the gauge colour already says it.
+    public var needsAttention: Bool {
+        self != .healthy
     }
 
     public var color: Color {
@@ -122,7 +129,7 @@ public enum QuotaLevel {
         switch self {
         case .healthy: return "Healthy"
         case .moderate: return "Low"
-        case .critical: return "Critical"
+        case .critical: return "Almost out"
         }
     }
 }
