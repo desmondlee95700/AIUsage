@@ -54,7 +54,7 @@ public struct MainUsageView: View {
                         .transition(.opacity)
                 }
             }
-            .frame(height: 440)
+            .frame(height: contentHeight)
             .clipped()
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.selectedProviders)
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.dualActiveProvider)
@@ -103,6 +103,18 @@ public struct MainUsageView: View {
     }
 
     // MARK: - Shared Helpers
+    
+    /// Preferred height of the scrolling content area. Fixed rather than fitted to content so the
+    /// popover doesn't jump when switching providers; tall enough that a typical page fits.
+    private static let preferredContentHeight: CGFloat = 580
+    /// Room left on screen for the header, provider switcher, popover arrow and a margin.
+    private static let reservedScreenHeight: CGFloat = 150
+    
+    /// Content height, shrunk on small displays so the popover never runs past the bottom of the screen
+    private var contentHeight: CGFloat {
+        guard let visible = NSScreen.main?.visibleFrame.height else { return Self.preferredContentHeight }
+        return max(320, min(Self.preferredContentHeight, visible - Self.reservedScreenHeight))
+    }
 
     /// Accent of the provider currently on screen, used for the ambient tint bleed
     private var activeTint: Color {
