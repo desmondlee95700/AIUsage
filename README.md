@@ -119,7 +119,8 @@ open AIUsage.app
 | <kbd>⌘</kbd> <kbd>U</kbd> | **Check for Updates...** | Checks GitHub Releases for new DMG builds and prompts direct download. |
 | <kbd>⌘</kbd> <kbd>Q</kbd> | **Quit AIUsage** | Terminates the application. |
 | — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
-| — | **Refresh Interval** | Configure automatic polling cadence (1m, 5m, 15m, 30m, 1h, or Manual). |
+| — | **Refresh Interval** | Configure automatic polling cadence (30s, 1m, 2m, 5m, or Manual). |
+| — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
 | — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |
 
 ---

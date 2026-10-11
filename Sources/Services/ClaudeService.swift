@@ -65,6 +65,12 @@ public final class ClaudeService {
             return nil
         }
         
+        // Within the pacing window, reuse the last account and limits instead of hitting claude.ai again
+        if Date() < desktopRetryAfter, let account = lastDesktopAccount {
+            return ClaudeState(account: account, limits: rememberLimits(nil), isConnected: true)
+        }
+        let requestStart = Date()
+        
         let lastOrgFromCookie = ClaudeKeyChainHelper.getCookie(name: "lastActiveOrg", key: key)
         
         // 1. Fetch organization profile
@@ -129,6 +135,8 @@ public final class ClaudeService {
             subscriptionCreatedAt: createdAt
         )
         
+        lastDesktopAccount = account
+        
         // 2. Fetch real rate limits usage
         guard !orgUuid.isEmpty else {
             return ClaudeState(account: account, limits: nil, isConnected: true)
@@ -141,12 +149,25 @@ public final class ClaudeService {
         
         let semUsage = DispatchSemaphore(value: 0)
         var fetchedLimits: ClaudeUsageLimits? = nil
+        var retryAfterSeconds: Double? = nil
         
-        session.dataTask(with: usageReq) { data, _, _ in
+        session.dataTask(with: usageReq) { data, resp, _ in
             defer { semUsage.signal() }
+            guard let http = resp as? HTTPURLResponse else { return }
+            if http.statusCode == 429 {
+                retryAfterSeconds = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init) ?? 0
+            }
+            guard http.statusCode == 200 else { return }
             fetchedLimits = Self.parseUsageLimits(data)
         }.resume()
         semUsage.wait()
+        
+        // Applied here rather than in the callback so state is only mutated on fetchQueue
+        if let secs = retryAfterSeconds {
+            desktopRetryAfter = Date().addingTimeInterval(max(secs, rateLimitBackoff))
+        } else if fetchedLimits != nil {
+            desktopRetryAfter = nextPacedRequest(after: requestStart)
+        }
         
         // A transient usage failure shouldn't make a paid plan look like the free tier
         return ClaudeState(account: account, limits: rememberLimits(fetchedLimits), isConnected: true)
@@ -227,12 +248,22 @@ public final class ClaudeService {
     }
     
     private var oauthRetryAfter = Date.distantPast
+    private var desktopRetryAfter = Date.distantPast
+    /// Account from the last successful claude.ai organizations request, reused while paced.
+    private var lastDesktopAccount: ClaudeAccountInfo?
     private var lastGoodLimits: ClaudeUsageLimits?
     private var lastGoodAt = Date.distantPast
     /// Mirrors the user's refresh interval (seconds; 0 = manual, every fetch goes through).
     private var usagePollInterval: TimeInterval = 60
     private let rateLimitBackoff: TimeInterval = 60     // floor after a 429 (the endpoint sends Retry-After: 0)
     private var staleGrace: TimeInterval { max(900, usagePollInterval * 3) }  // keep last good numbers through brief failures
+    
+    /// Earliest time the next usage request may go out. Measured from when the request started and kept
+    /// a little under the poll interval: timer ticks are spaced exactly one interval apart, so pacing a full
+    /// interval from when the response arrived would skip every other tick.
+    private func nextPacedRequest(after start: Date) -> Date {
+        start.addingTimeInterval(usagePollInterval * 0.8)
+    }
     
     /// Fetches usage with the Claude Code OAuth token. The token is only ever sent as a Bearer
     /// header to https://api.anthropic.com (HTTPS); it is never logged, stored, or sent elsewhere.
@@ -243,9 +274,10 @@ public final class ClaudeService {
     private func fetchUsageWithOAuth() -> ClaudeUsageLimits? {
         var fresh: ClaudeUsageLimits?
         if Date() >= oauthRetryAfter {
+            let requestStart = Date()
             fresh = requestUsage()
             if fresh != nil {
-                oauthRetryAfter = Date().addingTimeInterval(usagePollInterval)
+                oauthRetryAfter = nextPacedRequest(after: requestStart)
             }
         }
         return rememberLimits(fresh)

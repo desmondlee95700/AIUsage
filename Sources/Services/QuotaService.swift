@@ -260,9 +260,20 @@ public class QuotaService: ObservableObject {
         
         guard refreshInterval.rawValue > 0 else { return }
         
-        timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(refreshInterval.rawValue), repeats: true) { [weak self] _ in
-            self?.refresh()
+        let interval = TimeInterval(refreshInterval.rawValue)
+        // A tick right after a popover-open refresh would repeat the same work, so skip it
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refreshIfStale(minAge: interval / 2)
         }
+        // Lets macOS coalesce our wakeups with other timers
+        timer?.tolerance = interval * 0.1
+    }
+    
+    /// Refreshes unless the last refresh finished less than `minAge` seconds ago. Used for
+    /// automatic triggers (timer ticks, popover opens); explicit user actions call `refresh`.
+    public func refreshIfStale(minAge: TimeInterval = 15) {
+        if let last = lastUpdated, Date().timeIntervalSince(last) < minAge { return }
+        refresh()
     }
     
     public func refresh(forceDiscovery: Bool = false) {
