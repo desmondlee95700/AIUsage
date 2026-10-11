@@ -267,6 +267,55 @@ public struct AlertsOnboardingCard: View {
     }
 }
 
+// MARK: - Notifications Blocked Strip
+
+/// Slim notice for when low-quota alerts are on but macOS is blocking AIUsage's notifications,
+/// so the user knows alerts can't arrive and has a one-click way to fix it or turn them off.
+public struct NotificationsBlockedStrip: View {
+    public let onOpenSettings: () -> Void
+    public let onTurnOffAlerts: () -> Void
+
+    @State private var isHoveringClose = false
+
+    public init(onOpenSettings: @escaping () -> Void, onTurnOffAlerts: @escaping () -> Void) {
+        self.onOpenSettings = onOpenSettings
+        self.onTurnOffAlerts = onTurnOffAlerts
+    }
+
+    private let tint = LiquidGlassPalette.moderate
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bell.slash.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(tint)
+
+            Text("Notifications are blocked, so low-quota alerts can't appear.")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(LiquidGlassText.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 4)
+
+            GlassCapsuleButton("Open Settings", style: .prominent(tint), size: .small, action: onOpenSettings)
+
+            Button(action: onTurnOffAlerts) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(isHoveringClose ? LiquidGlassText.primary : LiquidGlassText.tertiary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .onHover { isHoveringClose = $0 }
+            .help("Turn off low-quota alerts")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .liquidGlassCard(cornerRadius: 14, tint: tint, material: .thinMaterial)
+    }
+}
+
 // MARK: - Menu Bar Marker
 
 /// Small glyph beside the limit the menu bar is showing, so a figure like "87%" up there can be

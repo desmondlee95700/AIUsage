@@ -12,8 +12,6 @@ public struct MainUsageView: View {
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
     @AppStorage(EmailMasking.defaultsKey) private var hideEmails = false
     @ObservedObject private var notifications = NotificationManager.shared
-    /// "Not Now" on the alerts card; the alerts menu can still turn notifications on later
-    @AppStorage("alertsOnboardingDismissed") private var alertsOnboardingDismissed = false
 
     public init(service: QuotaService) {
         self.service = service
@@ -40,9 +38,7 @@ public struct MainUsageView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if service.selectedInstalledProviders.count == 1 {
                     OverflowScrollView {
-                        if showsAlertsOnboarding {
-                            alertsOnboardingCard
-                        }
+                        alertsNotice
                         switch service.selectedInstalledProviders[0] {
                         case .gemini:
                             geminiView
@@ -64,7 +60,7 @@ public struct MainUsageView: View {
             .clipped()
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.selectedProviders)
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.dualActiveProvider)
-            .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: showsAlertsOnboarding)
+            .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: alertsNoticeKind)
         }
         .background(
             // Provider-coloured tint bleed pooled behind the glass
@@ -388,26 +384,62 @@ public struct MainUsageView: View {
         }
     }
     
-    // MARK: - Alerts First-Run Card
+    // MARK: - Alerts Notice
     
-    /// Asks once, in context, before macOS shows its permission prompt, so the prompt arrives
-    /// right after the user chose to turn alerts on instead of unannounced at launch.
-    private var showsAlertsOnboarding: Bool {
-        notifications.permission == .notDetermined && service.alertMode != .off && !alertsOnboardingDismissed
+    private enum AlertsNoticeKind: Equatable {
+        case none
+        /// Never asked: invite the user to turn alerts on, so the macOS prompt arrives when expected
+        case setUp
+        /// Alerts are on but notifications are blocked, so none can appear
+        case blocked
     }
     
-    private var alertsOnboardingCard: some View {
-        AlertsOnboardingCard(
-            onTurnOn: { NotificationManager.shared.requestAuthorization() },
-            onDismiss: {
-                withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion)) {
-                    alertsOnboardingDismissed = true
-                }
+    /// Shown at the top of the popover whenever low-quota alerts are on but can't be delivered.
+    /// Turning alerts off (from the notice or the menu) clears it.
+    private var alertsNoticeKind: AlertsNoticeKind {
+        guard service.alertMode != .off else { return .none }
+        switch notifications.permission {
+        case .notDetermined: return .setUp
+        case .denied: return .blocked
+        case .authorized, .unknown: return .none
+        }
+    }
+    
+    private func turnOffAlerts() {
+        withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion)) {
+            service.alertMode = .off
+        }
+    }
+    
+    @ViewBuilder
+    private var alertsNotice: some View {
+        if alertsNoticeKind != .none {
+            alertsNoticeContent
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+    
+    @ViewBuilder
+    private var alertsNoticeContent: some View {
+        Group {
+            switch alertsNoticeKind {
+            case .none:
+                EmptyView()
+            case .setUp:
+                // "Not Now" turns alerts off: that's what declining means, and it can be undone from the menu
+                AlertsOnboardingCard(
+                    onTurnOn: { NotificationManager.shared.requestAuthorization() },
+                    onDismiss: turnOffAlerts
+                )
+            case .blocked:
+                NotificationsBlockedStrip(
+                    onOpenSettings: { NotificationManager.openNotificationSettings() },
+                    onTurnOffAlerts: turnOffAlerts
+                )
             }
-        )
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
     
     // MARK: - Persistent Provider Views
@@ -577,9 +609,7 @@ public struct MainUsageView: View {
     @ViewBuilder
     private var dualFlippingContentView: some View {
         OverflowScrollView {
-            if showsAlertsOnboarding {
-                alertsOnboardingCard
-            }
+            alertsNotice
             Group {
                 switch service.dualActiveProvider {
                 case .gemini:
