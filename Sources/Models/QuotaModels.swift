@@ -112,26 +112,12 @@ public struct QuotaBucket: Codable, Identifiable {
         if let desc = description, !desc.isEmpty {
             return desc
         }
-        guard let resetTime = resetTime else { return nil }
-        
-        guard let target = DateParsing.iso8601(resetTime) else { return nil }
-        let diff = target.timeIntervalSince(Date())
-        if diff <= 0 {
-            return "Refreshes soon"
-        }
-        
-        let hours = Int(diff) / 3600
-        let minutes = (Int(diff) % 3600) / 60
-        let days = hours / 24
-        let remainingHours = hours % 24
-        
-        if days > 0 {
-            return "Fully refreshes in \(days)d \(remainingHours)h"
-        } else if hours > 0 {
-            return "Fully refreshes in \(hours)h \(minutes)m"
-        } else {
-            return "Fully refreshes in \(minutes)m"
-        }
+        guard let target = resetDate else { return nil }
+        return DateParsing.countdown(until: target).map { "Resets in \($0)" } ?? "Resets soon"
+    }
+    
+    public var resetDate: Date? {
+        resetTime.flatMap(DateParsing.iso8601)
     }
 }
 
@@ -312,13 +298,12 @@ public struct CodexRateLimitWindow: Codable {
     }
     
     public var formattedResetCountdown: String? {
-        guard let timestamp = resetsAt else { return nil }
-        let resetDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let diff = resetDate.timeIntervalSince(Date())
-        if diff <= 0 {
-            return "Refreshes soon"
-        }
-        return "Resets \(DateParsing.resetDate.string(from: resetDate))"
+        guard let resetDate = resetDate else { return nil }
+        return DateParsing.countdown(until: resetDate).map { "Resets in \($0)" } ?? "Resets soon"
+    }
+    
+    public var resetDate: Date? {
+        resetsAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
     }
 }
 
@@ -419,12 +404,7 @@ public struct CodexRateLimitResetCredit: Codable, Identifiable {
     public var formattedExpiration: String {
         guard let exp = expiresAt else { return "Ready to use" }
         let date = Date(timeIntervalSince1970: TimeInterval(exp))
-        let now = Date()
-        let diff = date.timeIntervalSince(now)
-        if diff <= 0 {
-            return "Expired"
-        }
-        return "Resets \(DateParsing.resetDate.string(from: date))"
+        return DateParsing.countdown(until: date).map { "Expires in \($0)" } ?? "Expired"
     }
 }
 
@@ -650,27 +630,11 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     
     public var formattedFiveHourCountdown: String? {
         guard let reset = fiveHourResetTime else { return "Rolling 5h window" }
-        let diff = reset.timeIntervalSince(Date())
-        if diff <= 0 { return "Fully refreshed" }
-        let hours = Int(diff) / 3600
-        let minutes = (Int(diff) % 3600) / 60
-        if hours > 0 {
-            return "Resets in \(hours)h \(minutes)m"
-        } else {
-            return "Resets in \(minutes)m"
-        }
+        return DateParsing.countdown(until: reset).map { "Resets in \($0)" } ?? "Fully refreshed"
     }
     
     public var formattedWeeklyCountdown: String? {
         guard let reset = weeklyResetTime else { return "Weekly reset" }
-        let diff = reset.timeIntervalSince(Date())
-        if diff <= 0 { return "Refreshed" }
-        let days = Int(diff) / 86400
-        let hours = (Int(diff) % 86400) / 3600
-        if days > 0 {
-            return "Resets in \(days)d \(hours)h"
-        } else {
-            return "Resets in \(hours)h"
-        }
+        return DateParsing.countdown(until: reset).map { "Resets in \($0)" } ?? "Refreshed"
     }
 }

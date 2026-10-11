@@ -48,18 +48,34 @@ public struct TokenActivityCardView: View {
                 rangePicker
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                statsRow
-                barChart
+            Group {
+                if activity.isEmpty {
+                    // A row of zeros over an empty chart says nothing; one line does
+                    HStack(spacing: 8) {
+                        Image(systemName: "moon.zzz")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(tint)
+                        Text("No sessions on this Mac in the last \(activity.days.count) days.")
+                            .font(.system(size: 11))
+                            .foregroundColor(LiquidGlassText.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        statsRow
+                        barChart
 
-                Text(activity.isEmpty
-                     ? "No CLI sessions in the last \(activity.days.count) days. Activity appears here after your next session."
-                     : "Tokens exclude cache reads. Counted from local CLI session logs on this Mac.")
-                    .font(.system(size: 10))
-                    .foregroundColor(LiquidGlassText.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                        Text("Tokens exclude cache reads. Counted from local CLI session logs on this Mac.")
+                            .font(.system(size: 10))
+                            .foregroundColor(LiquidGlassText.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                }
             }
-            .padding(14)
             .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
         }
     }

@@ -104,7 +104,8 @@ public struct ChatGPTQuotaCardView: View {
                                 title: item.title,
                                 caption: nil,
                                 fraction: item.window.remainingFraction,
-                                resetText: item.window.formattedResetCountdown
+                                resetText: item.window.formattedResetCountdown,
+                                resetDate: item.window.resetDate
                             )
                         }
                     }
@@ -119,7 +120,8 @@ public struct ChatGPTQuotaCardView: View {
     
     private func usageStatsSection(usage: CodexUsageSummary) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            GlassSectionHeader("ChatGPT Activity", systemImage: "chart.bar.xaxis", tint: LiquidGlassPalette.aiBlue)
+            // Account-wide figures from OpenAI, unlike the local CLI logs in the card below
+            GlassSectionHeader("Account Usage", systemImage: "chart.bar.xaxis", tint: LiquidGlassPalette.aiBlue)
             
             HStack(spacing: 8) {
                 statTile(

@@ -17,11 +17,27 @@ enum DateParsing {
         iso8601Fractional.date(from: string) ?? iso8601Whole.date(from: string)
     }
 
-    /// "3 Oct 2026 at 4:00 PM", used for Codex reset and credit expiry dates.
-    static let resetDate: DateFormatter = {
+    /// Exact date for tooltips behind relative countdowns, in the user's locale ("Mon 12 Oct, 9:08 AM").
+    private static let exactDate: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM yyyy 'at' h:mm a"
+        formatter.setLocalizedDateFormatFromTemplate("EEE d MMM jmm")
         return formatter
     }()
+
+    static func exact(_ date: Date) -> String {
+        exactDate.string(from: date)
+    }
+
+    /// Time left until `date` as "2d 3h", "4h 12m", "16m" or "<1m"; nil once it has passed.
+    /// Every reset and expiry countdown uses this, so all providers read the same way.
+    static func countdown(until date: Date, now: Date = Date()) -> String? {
+        let seconds = Int(date.timeIntervalSince(now))
+        guard seconds > 0 else { return nil }
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3600
+        let minutes = (seconds % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        return minutes > 0 ? "\(minutes)m" : "<1m"
+    }
 }

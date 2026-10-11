@@ -10,6 +10,7 @@ public struct MainUsageView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
+    @AppStorage(EmailMasking.defaultsKey) private var hideEmails = false
 
     public init(service: QuotaService) {
         self.service = service
@@ -147,6 +148,15 @@ public struct MainUsageView: View {
         .padding(.horizontal, 14)
     }
 
+    /// Tab subtitle. The menu bar's terse "Off" becomes what's actually wrong: the desktop
+    /// app isn't running (Antigravity, ChatGPT) or no Claude account is signed in.
+    private func tabStatus(for provider: AIProvider) -> String {
+        guard service.isProviderConnected(provider) else {
+            return provider == .claude ? "Signed out" : "Not running"
+        }
+        return service.badgeText(for: provider)
+    }
+    
     /// Remaining fraction shown on a provider's switcher tab, or nil when it has no figure
     private func remainingFraction(for provider: AIProvider) -> Double? {
         switch provider {
@@ -184,19 +194,12 @@ public struct MainUsageView: View {
                         .shadow(color: LiquidGlassPalette.aiBlue.opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("AIUsage")
-                        .font(.system(size: 13.5, weight: .bold))
-                        .foregroundColor(LiquidGlassText.primary)
-                        .lineLimit(1)
-                        .fixedSize()
-                    
-                    Text(AppVersion.displayString)
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                        .foregroundColor(LiquidGlassText.tertiary)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
+                // The version lives in the ⋯ menu
+                Text("AIUsage")
+                    .font(.system(size: 13.5, weight: .bold))
+                    .foregroundColor(LiquidGlassText.primary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             
             // Freshness pill: how current the numbers are, re-rendered as they age.
@@ -270,15 +273,48 @@ public struct MainUsageView: View {
                     service.refresh(forceDiscovery: true)
                 }
                 
-                GlassIconButton(systemImage: "power", help: "Quit AIUsage") {
-                    NSApplication.shared.terminate(nil)
-                }
+                moreMenu
             }
             .padding(2)
             .liquidGlassPill()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+    
+    /// Settings and app actions. Quit lives here rather than as a bare button next to Refresh,
+    /// where it was easy to hit by mistake.
+    private var moreMenu: some View {
+        Menu {
+            Text("AIUsage \(AppVersion.displayString)")
+            Divider()
+            Picker("Refresh Interval", selection: $service.refreshInterval) {
+                ForEach(RefreshInterval.allCases, id: \.self) { interval in
+                    Text(interval.title).tag(interval)
+                }
+            }
+            Toggle("Launch at Login", isOn: Binding(
+                get: { LaunchAtLogin.isEnabled },
+                set: { _ in LaunchAtLogin.toggle() }
+            ))
+            Toggle("Hide Email Addresses", isOn: $hideEmails)
+            Divider()
+            Button("Check for Updates…") {
+                UpdateService.shared.checkForUpdates(isUserInitiated: true)
+            }
+            Button("Quit AIUsage") {
+                NSApplication.shared.terminate(nil)
+            }
+            .keyboardShortcut("q")
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11.5, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: 26, height: 26)
+        .help("More")
     }
     
     // MARK: - Persistent Provider Views
@@ -404,7 +440,7 @@ public struct MainUsageView: View {
                         .foregroundColor(isSelected ? LiquidGlassText.primary : LiquidGlassText.secondary)
                         .lineLimit(1)
                     
-                    Text(service.badgeText(for: provider))
+                    Text(tabStatus(for: provider))
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundColor(isSelected ? LiquidGlassText.secondary : LiquidGlassText.tertiary)
@@ -440,7 +476,7 @@ public struct MainUsageView: View {
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .help("\(provider.fullName): \(service.badgeText(for: provider))")
+        .help("\(provider.fullName): \(tabStatus(for: provider))")
     }
     
     // MARK: - Dual Flipping Content View

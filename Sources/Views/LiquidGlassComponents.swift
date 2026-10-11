@@ -365,14 +365,17 @@ public struct QuotaTile: View {
     public let caption: String?
     public let fraction: Double
     public let resetText: String?
+    /// Exact reset time, shown on hover behind the relative countdown
+    public let resetDate: Date?
 
     @State private var isHovered = false
 
-    public init(title: String, caption: String?, fraction: Double, resetText: String?) {
+    public init(title: String, caption: String?, fraction: Double, resetText: String?, resetDate: Date? = nil) {
         self.title = title
         self.caption = caption
         self.fraction = fraction
         self.resetText = resetText
+        self.resetDate = resetDate
     }
 
     public var body: some View {
@@ -413,6 +416,7 @@ public struct QuotaTile: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundColor(LiquidGlassText.tertiary)
+                .help(resetDate.map { "Resets \(DateParsing.exact($0))" } ?? "")
             }
         }
         // Fill the row's height so a tile without a status chip matches its neighbour
@@ -489,6 +493,8 @@ public struct ProviderPlanCard: View {
     public let onLaunch: () -> Void
     public let planLink: PlanLink?
 
+    @AppStorage(EmailMasking.defaultsKey) private var hideEmail = false
+
     public init(
         provider: AIProvider,
         icon: NSImage?,
@@ -522,7 +528,7 @@ public struct ProviderPlanCard: View {
                     .lineLimit(1)
 
                 if let email = email, !email.isEmpty {
-                    Text(email)
+                    Text(hideEmail ? EmailMasking.mask(email) : email)
                         .font(.system(size: 11))
                         .foregroundColor(LiquidGlassText.tertiary)
                         .lineLimit(1)

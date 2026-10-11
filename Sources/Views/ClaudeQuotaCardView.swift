@@ -22,6 +22,7 @@ public struct ClaudeQuotaCardView: View {
         let caption: String
         let remainingPercent: Int
         let reset: String?
+        let resetDate: Date?
     }
     
     private func tiles(for limits: ClaudeUsageLimits) -> [LimitTile] {
@@ -31,7 +32,8 @@ public struct ClaudeQuotaCardView: View {
                 title: "5-Hour",
                 caption: "Rolling burst window",
                 remainingPercent: limits.fiveHourRemainingPercent,
-                reset: limits.formattedFiveHourCountdown
+                reset: limits.formattedFiveHourCountdown,
+                resetDate: limits.fiveHourResetTime
             ))
         }
         if limits.hasWeeklyWindow {
@@ -39,7 +41,8 @@ public struct ClaudeQuotaCardView: View {
                 title: "Weekly",
                 caption: "All models",
                 remainingPercent: limits.weeklyRemainingPercent,
-                reset: limits.formattedWeeklyCountdown
+                reset: limits.formattedWeeklyCountdown,
+                resetDate: limits.weeklyResetTime
             ))
         }
         if let sonnet = limits.sonnetRemainingPercent {
@@ -47,7 +50,8 @@ public struct ClaudeQuotaCardView: View {
                 title: "Sonnet",
                 caption: "Weekly dedicated quota",
                 remainingPercent: sonnet,
-                reset: limits.formattedWeeklyCountdown
+                reset: limits.formattedWeeklyCountdown,
+                resetDate: limits.weeklyResetTime
             ))
         }
         return list
@@ -95,7 +99,8 @@ public struct ClaudeQuotaCardView: View {
                                 title: item.title,
                                 caption: nil,
                                 fraction: Double(item.remainingPercent) / 100.0,
-                                resetText: item.reset
+                                resetText: item.reset,
+                                resetDate: item.resetDate
                             )
                             .help(item.caption)
                         }
