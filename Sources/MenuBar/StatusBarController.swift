@@ -284,6 +284,8 @@ public class StatusBarController {
     private func showPopover(_ button: NSStatusBarButton) {
         // Refresh quotas when the popover opens, unless that just happened
         service.refreshIfStale()
+        // Pick up notification permission changes made in System Settings
+        NotificationManager.shared.refreshPermission()
         
         updatePopoverSize(force: false)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -299,6 +301,7 @@ public class StatusBarController {
     }
     
     private func showContextMenu(_ button: NSStatusBarButton) {
+        NotificationManager.shared.refreshPermission()
         let menu = NSMenu()
         
         // Header
@@ -375,9 +378,24 @@ public class StatusBarController {
             alertsMenu.addItem(item)
         }
         alertsMenu.addItem(NSMenuItem.separator())
-        let testItem = NSMenuItem(title: "Send Test Notification", action: #selector(sendTestNotificationAction), keyEquivalent: "")
-        testItem.target = self
-        alertsMenu.addItem(testItem)
+        // Live permission status, plus the one action that fixes it
+        let statusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        statusItem.isEnabled = false
+        alertsMenu.addItem(statusItem)
+        switch NotificationManager.shared.permission {
+        case .authorized:
+            statusItem.title = "Notifications: On"
+        case .notDetermined, .unknown:
+            statusItem.title = "Notifications: Not Set Up"
+            let item = NSMenuItem(title: "Turn On Notifications", action: #selector(turnOnNotificationsAction), keyEquivalent: "")
+            item.target = self
+            alertsMenu.addItem(item)
+        case .denied:
+            statusItem.title = "Notifications: Blocked"
+            let item = NSMenuItem(title: "Open Notification Settings…", action: #selector(openNotificationSettingsAction), keyEquivalent: "")
+            item.target = self
+            alertsMenu.addItem(item)
+        }
         let alertsSubItem = NSMenuItem(title: "Low-Quota Alerts", action: nil, keyEquivalent: "")
         alertsSubItem.image = NSImage(systemSymbolName: "bell.badge", accessibilityDescription: "Low-Quota Alerts")
         alertsSubItem.submenu = alertsMenu
@@ -489,8 +507,12 @@ public class StatusBarController {
         }
     }
     
-    @objc private func sendTestNotificationAction() {
-        NotificationManager.shared.sendTestNotification()
+    @objc private func turnOnNotificationsAction() {
+        NotificationManager.shared.requestAuthorization()
+    }
+    
+    @objc private func openNotificationSettingsAction() {
+        NotificationManager.openNotificationSettings()
     }
     
     @objc private func toggleHideEmailsAction() {

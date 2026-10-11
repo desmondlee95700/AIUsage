@@ -221,6 +221,52 @@ public struct GlassIconButton: View {
     }
 }
 
+// MARK: - Alerts Onboarding Card
+
+/// One-time invitation to turn on low-quota alerts. Tapping "Turn On Alerts" brings up the macOS
+/// permission prompt right after the user asked for it, instead of unannounced at launch.
+public struct AlertsOnboardingCard: View {
+    public let onTurnOn: () -> Void
+    public let onDismiss: () -> Void
+
+    public init(onTurnOn: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        self.onTurnOn = onTurnOn
+        self.onDismiss = onDismiss
+    }
+
+    private let tint = LiquidGlassPalette.aiBlue
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(tint)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(tint.opacity(0.16)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Get notified before you run out")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(LiquidGlassText.primary)
+                    Text("AIUsage can alert you when a 5-hour or weekly limit is running low, and tell you when it resets.")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(LiquidGlassText.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                GlassCapsuleButton("Not Now", size: .small, action: onDismiss)
+                GlassCapsuleButton("Turn On Alerts", systemImage: "bell", style: .prominent(tint), size: .small, action: onTurnOn)
+            }
+        }
+        .padding(14)
+        .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
+    }
+}
+
 // MARK: - Menu Bar Marker
 
 /// Small glyph beside the limit the menu bar is showing, so a figure like "87%" up there can be

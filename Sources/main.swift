@@ -22,10 +22,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize status bar item and controller
         statusBarController = StatusBarController(service: .shared)
         
-        // Request user notification permissions for low-quota spending alerts, unless they're turned off
-        if QuotaService.shared.alertMode != .off {
-            NotificationManager.shared.requestAuthorization()
-        }
+        // Read notification permission for the alerts card and menus. Nothing is requested here:
+        // a prompt at launch arrives unannounced and is easily missed, so the user turns alerts on
+        // from the popover's first-run card or the alerts menu instead.
+        NotificationManager.shared.refreshPermission()
     }
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -2,96 +2,63 @@ import Foundation
 import UserNotifications
 import Cocoa
 
-public class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
+/// Whether macOS lets AIUsage show notifications, as last read from Notification Center.
+public enum NotificationPermission: Equatable {
+    case unknown        // not read yet
+    case notDetermined  // never asked
+    case denied
+    case authorized
+}
+
+public class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     public static let shared = NotificationManager()
     
-    /// Permission is requested by the app at launch (unless alerts are off) or on first use,
-    /// not here, so merely touching `shared` never prompts.
+    /// Drives the first-run card and the status line in the alerts menus. Refreshed when the
+    /// popover opens, so a change made in System Settings shows up the next time it's opened.
+    @Published public private(set) var permission: NotificationPermission = .unknown
+    
+    /// Never prompts: permission is asked for when the user turns alerts on from the first-run
+    /// card or the alerts menu, so the macOS prompt arrives when they're expecting it.
     private override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+        refreshPermission()
+    }
+    
+    public func refreshPermission() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let permission: NotificationPermission
+            switch settings.authorizationStatus {
+            case .notDetermined: permission = .notDetermined
+            case .denied: permission = .denied
+            default: permission = .authorized
+            }
+            DispatchQueue.main.async {
+                if self?.permission != permission { self?.permission = permission }
+            }
+        }
     }
     
     public func requestAuthorization(completion: ((Bool) -> Void)? = nil) {
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
             // NSLog rather than print: a menu bar app's stdout goes nowhere, but this shows in Console
             if let error = error {
                 NSLog("AIUsage: notification authorization error: %@", error.localizedDescription)
             } else if !granted {
                 NSLog("AIUsage: notification permission not granted")
             }
+            self?.refreshPermission()
             completion?(granted)
         }
     }
     
-    // MARK: - Test Notification
-    
-    /// Posts a sample alert so the user can check notifications work. Asks for permission if it
-    /// hasn't been decided yet; if notifications are blocked, explains and offers System Settings.
-    public func sendTestNotification() {
-        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            switch settings.authorizationStatus {
-            case .notDetermined:
-                self?.requestAuthorization { granted in
-                    if granted {
-                        self?.postTestNotification()
-                    } else {
-                        Self.showNotificationsBlockedAlert()
-                    }
-                }
-            case .denied:
-                Self.showNotificationsBlockedAlert()
-            default:
-                if settings.alertSetting == .disabled {
-                    // Allowed, but banners are off, so a test would land silently in Notification Center
-                    Self.showNotificationsBlockedAlert(bannersOnly: true)
-                }
-                self?.postTestNotification()
-            }
-        }
-    }
-    
-    private func postTestNotification() {
-        let content = UNMutableNotificationContent()
-        content.title = "AIUsage Test Alert"
-        content.body = "Notifications are working. You'll get alerts like this when a limit runs low."
-        content.sound = .default
-        let request = UNNotificationRequest(identifier: "test-\(Int(Date().timeIntervalSince1970))", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                NSLog("AIUsage: failed to deliver test notification: %@", error.localizedDescription)
-                DispatchQueue.main.async {
-                    let alert = NSAlert()
-                    alert.messageText = "Test Notification Failed"
-                    alert.informativeText = error.localizedDescription
-                    NSApp.activate(ignoringOtherApps: true)
-                    alert.runModal()
-                }
-            }
-        }
-    }
-    
-    private static func showNotificationsBlockedAlert(bannersOnly: Bool = false) {
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            if bannersOnly {
-                alert.messageText = "AIUsage Banners Are Off"
-                alert.informativeText = "Notifications are allowed but set to not show banners, so low-quota alerts only appear in Notification Center. Turn on banners for AIUsage in System Settings to see them as they arrive."
-            } else {
-                alert.messageText = "Notifications Are Off for AIUsage"
-                alert.informativeText = "Low-quota alerts can't be shown until you allow notifications for AIUsage in System Settings."
-            }
-            alert.addButton(withTitle: "Open Notification Settings")
-            alert.addButton(withTitle: "Not Now")
-            NSApp.activate(ignoringOtherApps: true)
-            if alert.runModal() == .alertFirstButtonReturn {
-                let bundleId = Bundle.main.bundleIdentifier ?? ""
-                let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleId)")
-                    ?? URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
-                NSWorkspace.shared.open(url)
-            }
-        }
+    /// Opens AIUsage's page in System Settings › Notifications, for users who declined the prompt.
+    public static func openNotificationSettings() {
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleId)")
+            ?? URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
+        NSWorkspace.shared.open(url)
     }
     
     public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil, resetDate: Date? = nil) {

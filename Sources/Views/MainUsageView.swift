@@ -11,6 +11,9 @@ public struct MainUsageView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
     @AppStorage(EmailMasking.defaultsKey) private var hideEmails = false
+    @ObservedObject private var notifications = NotificationManager.shared
+    /// "Not Now" on the alerts card; the alerts menu can still turn notifications on later
+    @AppStorage("alertsOnboardingDismissed") private var alertsOnboardingDismissed = false
 
     public init(service: QuotaService) {
         self.service = service
@@ -37,6 +40,9 @@ public struct MainUsageView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if service.selectedInstalledProviders.count == 1 {
                     OverflowScrollView {
+                        if showsAlertsOnboarding {
+                            alertsOnboardingCard
+                        }
                         switch service.selectedInstalledProviders[0] {
                         case .gemini:
                             geminiView
@@ -58,6 +64,7 @@ public struct MainUsageView: View {
             .clipped()
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.selectedProviders)
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.dualActiveProvider)
+            .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: showsAlertsOnboarding)
         }
         .background(
             // Provider-coloured tint bleed pooled behind the glass
@@ -326,9 +333,7 @@ public struct MainUsageView: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
                 Divider()
-                Button("Send Test Notification") {
-                    NotificationManager.shared.sendTestNotification()
-                }
+                notificationStatusItems
             }
             Toggle("Hide Email Addresses", isOn: $hideEmails)
             Divider()
@@ -362,6 +367,47 @@ public struct MainUsageView: View {
         .fixedSize()
         .frame(width: 26, height: 26)
         .help("More")
+    }
+    
+    /// Notification permission as menu items: a status line, plus the one action that fixes it
+    @ViewBuilder
+    private var notificationStatusItems: some View {
+        switch notifications.permission {
+        case .authorized:
+            Text("Notifications: On")
+        case .notDetermined, .unknown:
+            Text("Notifications: Not Set Up")
+            Button("Turn On Notifications") {
+                NotificationManager.shared.requestAuthorization()
+            }
+        case .denied:
+            Text("Notifications: Blocked")
+            Button("Open Notification Settings…") {
+                NotificationManager.openNotificationSettings()
+            }
+        }
+    }
+    
+    // MARK: - Alerts First-Run Card
+    
+    /// Asks once, in context, before macOS shows its permission prompt, so the prompt arrives
+    /// right after the user chose to turn alerts on instead of unannounced at launch.
+    private var showsAlertsOnboarding: Bool {
+        notifications.permission == .notDetermined && service.alertMode != .off && !alertsOnboardingDismissed
+    }
+    
+    private var alertsOnboardingCard: some View {
+        AlertsOnboardingCard(
+            onTurnOn: { NotificationManager.shared.requestAuthorization() },
+            onDismiss: {
+                withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion)) {
+                    alertsOnboardingDismissed = true
+                }
+            }
+        )
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
     
     // MARK: - Persistent Provider Views
@@ -531,6 +577,9 @@ public struct MainUsageView: View {
     @ViewBuilder
     private var dualFlippingContentView: some View {
         OverflowScrollView {
+            if showsAlertsOnboarding {
+                alertsOnboardingCard
+            }
             Group {
                 switch service.dualActiveProvider {
                 case .gemini:

@@ -61,7 +61,7 @@ Download the latest pre-compiled macOS disk image:
 | :--- | :--- |
 | 🎛️ **Flexible Provider Focus** | Toggle any combination of active models (Antigravity, ChatGPT, Claude) with persistent in-menu checkboxes and an in-popover filter slider. |
 | 📊 **Menu Bar Telemetry** | Shows each provider's **lowest** remaining limit side by side (e.g. `78% · 90% · 4%`), so a full 5-hour window can't hide an exhausted weekly one. A ⚠︎ marks anything at 10% or below, providers that are off are dimmed, and the hover tooltip breaks down every window. Prefer a quieter bar? Switch to **Icon Only**. |
-| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. Choose 30% and 10%, 10% only, or off. |
+| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. Choose 30% and 10%, 10% only, or off. The first time you open the popover, a card offers to turn alerts on, so the macOS permission prompt only appears when you ask for it. |
 | 📈 **Token Activity** | 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs (desktop app and CLI). |
 | 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients and viscous spring mechanics. The popover keeps a fixed height (shrinking on small screens), so switching providers never resizes it; when a page runs longer, the bottom edge fades and a chevron scrolls you to the rest. |
 | 🔒 **Private by Design** | Zero telemetry, zero LLM prompts consumed, and no credentials saved. Antigravity and ChatGPT are read locally; Claude usage is fetched from Anthropic's own usage endpoints using your existing sign-in. |
@@ -126,7 +126,7 @@ A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure you
 | — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
 | — | **Refresh Interval** | Configure automatic polling cadence (30s, 1m, 2m, 5m, or Manual). |
 | — | **Menu Bar** | Show Percentages, or Icon Only. |
-| — | **Low-Quota Alerts** | At 30% and 10% (default), at 10% only, or off. |
+| — | **Low-Quota Alerts** | At 30% and 10% (default), at 10% only, or off, plus whether notifications are allowed and a one-click fix if not. |
 | — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
 | — | **Hide Email Addresses** | Masks account emails in the popover, for screenshots and screen sharing. |
 | — | **Launch App** | Quick-launch shortcut to open Antigravity, ChatGPT.app, or Claude.app. |
