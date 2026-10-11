@@ -53,7 +53,7 @@ AIUsage/
 │       ├── QuotaCardView.swift             # Antigravity quota group cards & bucket progress rows
 │       ├── ChatGPTQuotaCardView.swift      # ChatGPT plan, rate-limit windows & reset credits
 │       ├── ClaudeQuotaCardView.swift       # Claude plan & 5-hour / weekly limits
-│       ├── TokenActivityCardView.swift     # 7/14/30-day token chart (Claude Code / Codex CLI logs)
+│       ├── TokenActivityCardView.swift     # 7/14/30-day token chart (Claude Code / Codex session logs, desktop + CLI)
 │       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
 │       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
 │       ├── PlanCardView.swift              # User tier badge & subscription management

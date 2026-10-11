@@ -75,10 +75,13 @@ public struct QuotaBucketRowView: View {
                         Text(resetInfo)
                             .font(.system(size: 10.5))
                             .fixedSize(horizontal: false, vertical: true)
+                            .help(bucket.resetDate.map { "Resets \(DateParsing.exact($0))" } ?? "")
                         Spacer(minLength: 4)
-                        Text(level.label)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(level.color)
+                        if level.needsAttention {
+                            Text(level.label)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(level.color)
+                        }
                     }
                     .foregroundColor(LiquidGlassText.tertiary)
                 }

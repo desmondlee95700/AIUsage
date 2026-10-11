@@ -20,10 +20,9 @@ public struct PlanCardView: View {
             systemFallback: "sparkles",
             planName: userTier?.name ?? "Google AI",
             email: email,
-            detail: userTier?.upgradeSubscriptionText ?? "You can upgrade to receive higher rate limits.",
-            launchHelp: "Launch Antigravity desktop app",
+            appName: "Antigravity",
             onLaunch: { ProcessDiscovery.launchAntigravityApp() },
-            onUpgrade: upgradeURL.map { url in { NSWorkspace.shared.open(url) } }
+            planLink: upgradeURL.map { .init(title: "Upgrade plan", url: $0) }
         )
     }
 }

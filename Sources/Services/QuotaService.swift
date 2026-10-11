@@ -49,7 +49,7 @@ public class QuotaService: ObservableObject {
     @Published public var claudeLimits: ClaudeUsageLimits? = nil
     @Published public var claudeErrorMessage: String? = nil
     
-    // Local token activity (Claude Code / Codex CLI session logs)
+    // Local token activity (Claude Code / Codex session logs, desktop app and CLI)
     @Published public var claudeActivity: TokenActivitySummary? = nil
     @Published public var codexActivity: TokenActivitySummary? = nil
     

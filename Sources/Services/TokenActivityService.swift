@@ -1,13 +1,15 @@
 import Foundation
 
-/// Reads daily token activity from the session logs Claude Code and the Codex CLI keep on
-/// disk. Purely local file reads: no network, no tokens consumed.
+/// Reads daily token activity from the session logs Claude Code and Codex keep on disk.
+/// Purely local file reads: no network, no tokens consumed.
 ///
 /// - Claude Code: `~/.claude/projects/<project>/<session>.jsonl`, one `usage` per assistant message
-/// - Codex CLI: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, `token_count` events per turn
+/// - Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, `token_count` events per turn
 ///
-/// Only the Claude Code and Codex CLI are covered; chats in the Claude desktop app,
-/// claude.ai and chatgpt.com don't leave token counts on disk.
+/// Both logs cover coding sessions from the desktop apps as well as the CLIs (Claude Code
+/// records `entrypoint` "claude-desktop" or "cli"; Codex records `originator`, e.g.
+/// "Codex Desktop"). Regular chats in Claude, ChatGPT, claude.ai and chatgpt.com don't leave
+/// token counts on disk, so they aren't included.
 /// `@unchecked Sendable`: the only mutable state, `cache`, is confined to the serial `queue`.
 public final class TokenActivityService: @unchecked Sendable {
     public static let shared = TokenActivityService()

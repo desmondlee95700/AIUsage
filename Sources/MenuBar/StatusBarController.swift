@@ -417,27 +417,7 @@ public class StatusBarController {
     }
     
     @objc private func toggleLaunchAtLoginAction() {
-        let enable = !LaunchAtLogin.isEnabled
-        do {
-            try LaunchAtLogin.setEnabled(enable)
-            if enable && LaunchAtLogin.requiresApproval {
-                LaunchAtLogin.openSystemSettings()
-            }
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = enable ? "Couldn't Enable Launch at Login" : "Couldn't Disable Launch at Login"
-            alert.informativeText = "\(error.localizedDescription)\n\nMake sure AIUsage is in your Applications folder, or change it in System Settings > General > Login Items."
-            alert.alertStyle = .warning
-            if let icon = AppIconHelper.appIconImage {
-                alert.icon = icon
-            }
-            alert.addButton(withTitle: "Open Login Items")
-            alert.addButton(withTitle: "OK")
-            NSApp.activate(ignoringOtherApps: true)
-            if alert.runModal() == .alertFirstButtonReturn {
-                LaunchAtLogin.openSystemSettings()
-            }
-        }
+        LaunchAtLogin.toggle()
     }
     
     @objc private func refreshAction() {

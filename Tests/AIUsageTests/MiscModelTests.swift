@@ -69,10 +69,10 @@ final class QuotaBucketTests: XCTestCase {
     }
 
     func testResetCountdownFromTimestamp() {
-        XCTAssertEqual(bucket(fraction: 1, resetTime: "2000-01-01T00:00:00Z").formattedResetCountdown, "Refreshes soon")
+        XCTAssertEqual(bucket(fraction: 1, resetTime: "2000-01-01T00:00:00Z").formattedResetCountdown, "Resets soon")
         XCTAssertNil(bucket(fraction: 1, resetTime: "not a date").formattedResetCountdown)
 
         let future = ISO8601DateFormatter().string(from: Date().addingTimeInterval(2 * 86400 + 3 * 3600 + 60))
-        XCTAssertEqual(bucket(fraction: 1, resetTime: future).formattedResetCountdown, "Fully refreshes in 2d 3h")
+        XCTAssertEqual(bucket(fraction: 1, resetTime: future).formattedResetCountdown, "Resets in 2d 3h")
     }
 }
