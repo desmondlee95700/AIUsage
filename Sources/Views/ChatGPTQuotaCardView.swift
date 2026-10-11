@@ -63,7 +63,7 @@ public struct ChatGPTQuotaCardView: View {
             
             if let activity = service.codexActivity {
                 TokenActivityCardView(
-                    title: "Codex CLI Activity",
+                    title: "Codex Activity",
                     activity: activity,
                     tint: LiquidGlassPalette.aiBlue
                 )

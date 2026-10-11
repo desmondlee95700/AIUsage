@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Token activity over a selectable 7 / 14 / 30-day period, read from a CLI's local session logs.
+/// Token activity over a selectable 7 / 14 / 30-day period, read from local coding-session logs.
 public struct TokenActivityCardView: View {
     public let title: String
     public let fullActivity: TokenActivitySummary
@@ -68,7 +68,8 @@ public struct TokenActivityCardView: View {
                         statsRow
                         barChart
 
-                        Text("Tokens exclude cache reads. Counted from local CLI session logs on this Mac.")
+                        // Coding sessions only: regular chats leave no token counts on disk
+                        Text("Coding sessions from the desktop app and CLI on this Mac. Tokens exclude cache reads.")
                             .font(.system(size: 10))
                             .foregroundColor(LiquidGlassText.tertiary)
                             .fixedSize(horizontal: false, vertical: true)

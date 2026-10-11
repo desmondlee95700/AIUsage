@@ -77,7 +77,7 @@ public struct ClaudeQuotaCardView: View {
             }
             
             if let activity = service.claudeActivity {
-                TokenActivityCardView(title: "Claude Code Activity", activity: activity, tint: tint)
+                TokenActivityCardView(title: "Claude Activity", activity: activity, tint: tint)
             }
         }
     }
