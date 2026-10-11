@@ -2,7 +2,7 @@
 
 Welcome to the **AIUsage** codebase. This document outlines architectural standards, development workflows, and design guidelines for AI agents working in this repository.
 
-`GEMINI.md` in the project root is symlinked to this file to maintain a single source of truth across Antigravity, Gemini CLI, and other agentic environments.
+`CLAUDE.md` and `GEMINI.md` in the project root are symlinked to this file to maintain a single source of truth across Claude Code, Antigravity, Gemini CLI, and other agentic environments.
 
 ---
 
@@ -23,6 +23,7 @@ AIUsage/
 ├── Package.swift               # SPM manifest (Swift 5.9+, macOS v13+)
 ├── README.md                   # User documentation
 ├── AGENTS.md                   # Canonical agent operational guide
+├── CLAUDE.md -> AGENTS.md      # Symlink for Claude Code rule loading
 ├── GEMINI.md -> AGENTS.md      # Symlink for Gemini CLI / Antigravity rule loading
 ├── .github/                    # CI/CD (see §6.4)
 │   ├── workflows/ci.yml        # PR & main checks: build, test, conventions, SwiftLint
