@@ -464,9 +464,10 @@ public class StatusBarController {
         quitItem.target = self
         menu.addItem(quitItem)
         
-        statusItem.menu = menu
-        button.performClick(nil)
-        statusItem.menu = nil // Restore normal click behavior
+        // Pop the menu up directly under the status item. The previous approach (assign
+        // statusItem.menu, then performClick) re-sends the button's action on recent macOS, which
+        // reopened this menu recursively and froze the app on right-click.
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.maxY + 5), in: button)
     }
     
     @objc private func checkForUpdatesAction() {
