@@ -216,12 +216,19 @@ public struct MainUsageView: View {
                         .shadow(color: LiquidGlassPalette.aiBlue.opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                // The version lives in the ⋯ menu
-                Text("AIUsage")
-                    .font(.system(size: 13.5, weight: .bold))
-                    .foregroundColor(LiquidGlassText.primary)
-                    .lineLimit(1)
-                    .fixedSize()
+                // Name with the version beneath, stacked so the header row doesn't grow wider
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("AIUsage")
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(LiquidGlassText.primary)
+                    Text(AppVersion.displayString)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(LiquidGlassText.tertiary)
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
             }
             
             // Freshness pill: how current the numbers are, re-rendered as they age.
@@ -308,23 +315,15 @@ public struct MainUsageView: View {
     /// where it was easy to hit by mistake.
     private var moreMenu: some View {
         Menu {
-            Text("AIUsage \(AppVersion.displayString)")
-            Divider()
-            Picker("Refresh Interval", selection: $service.refreshInterval) {
+            // Data: how often numbers refresh and when you're told they're low
+            Picker(selection: $service.refreshInterval) {
                 ForEach(RefreshInterval.allCases, id: \.self) { interval in
                     Text(interval.title).tag(interval)
                 }
+            } label: {
+                Label("Refresh Interval", systemImage: "timer")
             }
-            Toggle("Launch at Login", isOn: Binding(
-                get: { LaunchAtLogin.isEnabled },
-                set: { _ in LaunchAtLogin.toggle() }
-            ))
-            Picker("Menu Bar", selection: $service.displayMode) {
-                ForEach(MenuBarDisplayMode.allCases, id: \.self) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            Menu("Low-Quota Alerts") {
+            Menu {
                 Picker("Low-Quota Alerts", selection: $service.alertMode) {
                     ForEach(LowQuotaAlertMode.allCases, id: \.self) { mode in
                         Text(mode.title).tag(mode)
@@ -334,11 +333,35 @@ public struct MainUsageView: View {
                 .labelsHidden()
                 Divider()
                 notificationStatusItems
+            } label: {
+                Label("Low-Quota Alerts", systemImage: "bell.badge")
             }
-            Toggle("Hide Email Addresses", isOn: $hideEmails)
+            
             Divider()
+            
+            // Appearance: what the menu bar and popover show
+            Picker(selection: $service.displayMode) {
+                ForEach(MenuBarDisplayMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            } label: {
+                Label("Menu Bar", systemImage: "menubar.rectangle")
+            }
+            Toggle(isOn: $hideEmails) {
+                Label("Hide Email Addresses", systemImage: "eye.slash")
+            }
+            
+            Divider()
+            
+            // App: startup and the provider apps
+            Toggle(isOn: Binding(
+                get: { LaunchAtLogin.isEnabled },
+                set: { _ in LaunchAtLogin.toggle() }
+            )) {
+                Label("Launch at Login", systemImage: "power")
+            }
             if !service.installedProviders.isEmpty {
-                Menu("Open App") {
+                Menu {
                     if service.isGeminiInstalled {
                         Button("Antigravity") { ProcessDiscovery.launchAntigravityApp() }
                     }
@@ -348,14 +371,24 @@ public struct MainUsageView: View {
                     if service.isClaudeInstalled {
                         Button("Claude") { ClaudeDiscovery.launchClaudeApp() }
                     }
+                } label: {
+                    Label("Open App", systemImage: "arrow.up.forward.app")
                 }
-                Divider()
             }
-            Button("Check for Updates…") {
+            
+            Divider()
+            
+            Button {
                 UpdateService.shared.checkForUpdates(isUserInitiated: true)
+            } label: {
+                // Names the version when one is waiting, matching the header's update button
+                Label(updateService.availableUpdate.map { "Update to \($0.tagName)…" } ?? "Check for Updates…",
+                      systemImage: "arrow.down.circle")
             }
-            Button("Quit AIUsage") {
+            Button {
                 NSApplication.shared.terminate(nil)
+            } label: {
+                Label("Quit AIUsage", systemImage: "rectangle.portrait.and.arrow.right")
             }
             .keyboardShortcut("q")
         } label: {

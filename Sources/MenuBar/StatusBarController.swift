@@ -338,6 +338,15 @@ public class StatusBarController {
         focusSubItem.submenu = focusMenu
         menu.addItem(focusSubItem)
         
+        // Actions: Refresh All
+        let refreshItem = NSMenuItem(title: "Refresh All Now", action: #selector(refreshAction), keyEquivalent: "r")
+        refreshItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh All Now")
+        refreshItem.target = self
+        menu.addItem(refreshItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Data: how often numbers refresh and when you're told they're low
         // Refresh Interval Submenu
         let intervalMenu = NSMenu()
         for interval in RefreshInterval.allCases {
@@ -352,16 +361,12 @@ public class StatusBarController {
         intervalSubItem.submenu = intervalMenu
         menu.addItem(intervalSubItem)
         
-        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLoginAction), keyEquivalent: "")
-        loginItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Launch at Login")
-        // Pending approval in System Settings shows as mixed until the user allows it
-        loginItem.state = LaunchAtLogin.isEnabled ? .on : (LaunchAtLogin.requiresApproval ? .mixed : .off)
-        loginItem.target = self
-        menu.addItem(loginItem)
-        
-        menu.addItem(makeDisplayModeItem())
         menu.addItem(makeAlertsItem())
         
+        menu.addItem(NSMenuItem.separator())
+        
+        // Appearance: what the menu bar and popover show
+        menu.addItem(makeDisplayModeItem())
         let hideEmailItem = NSMenuItem(title: "Hide Email Addresses", action: #selector(toggleHideEmailsAction), keyEquivalent: "")
         hideEmailItem.image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Hide Email Addresses")
         hideEmailItem.state = UserDefaults.standard.bool(forKey: EmailMasking.defaultsKey) ? .on : .off
@@ -370,13 +375,15 @@ public class StatusBarController {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Actions: Refresh All
-        let refreshItem = NSMenuItem(title: "Refresh All Now", action: #selector(refreshAction), keyEquivalent: "r")
-        refreshItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh All Now")
-        refreshItem.target = self
-        menu.addItem(refreshItem)
+        // App: startup and the provider apps
+        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLoginAction), keyEquivalent: "")
+        loginItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Launch at Login")
+        // Pending approval in System Settings shows as mixed until the user allows it
+        loginItem.state = LaunchAtLogin.isEnabled ? .on : (LaunchAtLogin.requiresApproval ? .mixed : .off)
+        loginItem.target = self
+        menu.addItem(loginItem)
         
-        // Actions: Launch App Submenu (bundled together)
+        // Open App: launch a provider app
         if service.isGeminiInstalled || service.isCodexInstalled || service.isClaudeInstalled {
             let launchMenu = NSMenu()
             if service.isGeminiInstalled {
@@ -398,8 +405,8 @@ public class StatusBarController {
                 launchMenu.addItem(item)
             }
             
-            let launchSubItem = NSMenuItem(title: "Launch App", action: nil, keyEquivalent: "")
-            launchSubItem.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: "Launch App")
+            let launchSubItem = NSMenuItem(title: "Open App", action: nil, keyEquivalent: "")
+            launchSubItem.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: "Open App")
             launchSubItem.submenu = launchMenu
             menu.addItem(launchSubItem)
         }
@@ -409,19 +416,18 @@ public class StatusBarController {
         // Maintenance: Check for Updates
         let updateTitle: String = {
             if let update = UpdateService.shared.availableUpdate {
-                return "Update to \(update.tagName)..."
+                return "Update to \(update.tagName)…"
             }
-            return "Check for Updates..."
+            return "Check for Updates…"
         }()
         let updateItem = NSMenuItem(title: updateTitle, action: #selector(checkForUpdatesAction), keyEquivalent: "u")
         updateItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: "Check for Updates")
         updateItem.target = self
         menu.addItem(updateItem)
         
-        menu.addItem(NSMenuItem.separator())
-        
         // Quit
         let quitItem = NSMenuItem(title: "Quit AIUsage", action: #selector(quitAction), keyEquivalent: "q")
+        quitItem.image = NSImage(systemSymbolName: "rectangle.portrait.and.arrow.right", accessibilityDescription: "Quit AIUsage")
         quitItem.target = self
         menu.addItem(quitItem)
         

@@ -110,7 +110,7 @@ open AIUsage.app
 | **Freshness** | Status Pill | How old the numbers on screen are; turns amber when they've missed several refreshes. |
 | **Refresh Quotas** | `arrow.clockwise` (🔄) | Runs spring-animated icon spin and forces local service re-discovery and quota poll. |
 | **Update Available** | `arrow.down` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
-| **More** | `ellipsis` (⋯) | Refresh interval, menu bar style, low-quota alerts, Launch at Login, Hide Email Addresses, Open App, Check for Updates and Quit. |
+| **More** | `ellipsis` (⋯) | Grouped settings: refresh interval and low-quota alerts; menu bar style and Hide Email Addresses; Launch at Login and Open App; then Check for Updates and Quit. The app version sits under the AIUsage name in the header. |
 
 A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure your menu bar is showing.
 
