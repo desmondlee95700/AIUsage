@@ -32,10 +32,18 @@ Download the latest pre-compiled macOS disk image:
 3. Launch **AIUsage** — it will immediately appear in your macOS menu bar!
 
 > [!TIP]
-> **macOS Gatekeeper Notice ("AIUsage is damaged and can't be opened")**:  
+> **macOS Gatekeeper Notice ("Apple could not verify "AIUsage.dmg" is free of malware")**:  
 > Because AIUsage is an independent open-source app distributed outside the Mac App Store without an Apple Developer ID certificate, macOS attaches a quarantine flag to files downloaded via browsers (Chrome, Safari) and blocks them.
 > 
-> If you see this warning, open **Terminal** and run this one-line command:
+> If the DMG won't open, click **Done** (not *Move to Trash*), then open **Terminal** and clear the flag before opening it again:
+> ```bash
+> xattr -d com.apple.quarantine ~/Downloads/AIUsage.dmg
+> ```
+> Downloaded a different file, such as `AIUsage-v2.6.1.dmg` from the Releases page? Use its name instead:
+> ```bash
+> xattr -d com.apple.quarantine ~/Downloads/<file name>.dmg
+> ```
+> If the app itself is later reported as **"AIUsage is damaged and can't be opened"**, run:
 > ```bash
 > xattr -cr /Applications/AIUsage.app
 > ```
