@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Owns all provider state shown in the UI. Main-actor isolated: published state only changes on
+/// the main thread, and blocking work (subprocesses, discovery) runs off it via `runBlocking`.
+@MainActor
 public class QuotaService: ObservableObject {
     public static let shared = QuotaService()
     
@@ -263,7 +266,9 @@ public class QuotaService: ObservableObject {
         let interval = TimeInterval(refreshInterval.rawValue)
         // A tick right after a popover-open refresh would repeat the same work, so skip it
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.refreshIfStale(minAge: interval / 2)
+            Task { @MainActor in
+                self?.refreshIfStale(minAge: interval / 2)
+            }
         }
         // Lets macOS coalesce our wakeups with other timers
         timer?.tolerance = interval * 0.1
@@ -277,11 +282,6 @@ public class QuotaService: ObservableObject {
     }
     
     public func refresh(forceDiscovery: Bool = false) {
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async { self.refresh(forceDiscovery: forceDiscovery) }
-            return
-        }
-        
         // Don't drop requests that arrive mid-refresh (e.g. a provider was just
         // enabled): queue one follow-up that runs when the current refresh ends.
         guard !isLoading else {
@@ -290,85 +290,70 @@ public class QuotaService: ObservableObject {
         }
         isLoading = true
         
-        // Installation checks can spawn `ps` and walk app bundles, so keep them off the main thread
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let geminiInst = ProcessDiscovery.isAntigravityInstalled
-            let codexInst = CodexDiscovery.isCodexInstalled
-            let claudeInst = ClaudeDiscovery.isClaudeInstalled
-            DispatchQueue.main.async {
-                self?.performRefresh(
-                    forceDiscovery: forceDiscovery,
-                    geminiInst: geminiInst,
-                    codexInst: codexInst,
-                    claudeInst: claudeInst
-                )
-            }
+        Task {
+            await performRefresh(forceDiscovery: forceDiscovery)
         }
     }
     
-    private func performRefresh(forceDiscovery: Bool, geminiInst: Bool, codexInst: Bool, claudeInst: Bool) {
+    private func performRefresh(forceDiscovery: Bool) async {
+        // Installation checks can spawn `ps` and walk app bundles, so keep them off the main thread
+        let (geminiInst, codexInst, claudeInst) = await runBlocking {
+            (ProcessDiscovery.isAntigravityInstalled, CodexDiscovery.isCodexInstalled, ClaudeDiscovery.isClaudeInstalled)
+        }
         isGeminiInstalled = geminiInst
         isCodexInstalled = codexInst
         isClaudeInstalled = claudeInst
         
-        let dispatchGroup = DispatchGroup()
+        let geminiActive = geminiInst && selectedProviders.contains(.gemini)
+        let codexActive = codexInst && selectedProviders.contains(.chatgpt)
+        let claudeActive = claudeInst && selectedProviders.contains(.claude)
         
-        // 1. Refresh Gemini (Antigravity) if installed and selected
-        if geminiInst && selectedProviders.contains(.gemini) {
-            dispatchGroup.enter()
-            refreshGemini(forceDiscovery: forceDiscovery) {
-                dispatchGroup.leave()
-            }
-        } else {
+        if !geminiActive {
             isGeminiConnected = false
             discoveredServer = nil
             if !geminiInst {
                 geminiErrorMessage = "Antigravity is not installed."
             }
         }
-        
-        // 2. Refresh ChatGPT (Codex) if installed and selected
-        if codexInst && selectedProviders.contains(.chatgpt) {
-            dispatchGroup.enter()
-            refreshCodex {
-                dispatchGroup.leave()
-            }
-        } else {
+        if !codexActive {
             isCodexConnected = false
             if !codexInst {
                 codexErrorMessage = "ChatGPT / Codex is not installed."
             }
         }
-        
-        // Token activity comes from local session logs, so it's independent of connection
-        // state and doesn't hold up the refresh
-        refreshTokenActivity(codex: codexInst && selectedProviders.contains(.chatgpt),
-                             claude: claudeInst && selectedProviders.contains(.claude))
-        
-        // 3. Refresh Claude (Anthropic) if installed and selected
-        if claudeInst && selectedProviders.contains(.claude) {
-            dispatchGroup.enter()
-            refreshClaude(forceRefresh: forceDiscovery) {
-                dispatchGroup.leave()
-            }
-        } else {
+        if !claudeActive {
             isClaudeConnected = false
             if !claudeInst {
                 claudeErrorMessage = "Claude is not installed."
             }
         }
         
-        dispatchGroup.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            self.isLoading = false
-            self.lastUpdated = Date()
-            self.updateMenuBarCallback?()
-            self.checkLowQuotaNotifications()
-            
-            if let pendingForce = self.pendingRefreshForceDiscovery {
-                self.pendingRefreshForceDiscovery = nil
-                self.refresh(forceDiscovery: pendingForce)
+        // Token activity comes from local session logs, so it's independent of connection
+        // state and doesn't hold up the refresh
+        refreshTokenActivity(codex: codexActive, claude: claudeActive)
+        
+        // Providers are independent, so fetch them concurrently. Each child hops back to the
+        // main actor to publish its results.
+        await withTaskGroup(of: Void.self) { group in
+            if geminiActive {
+                group.addTask { await self.refreshGemini(forceDiscovery: forceDiscovery) }
             }
+            if codexActive {
+                group.addTask { await self.refreshCodex() }
+            }
+            if claudeActive {
+                group.addTask { await self.refreshClaude(forceRefresh: forceDiscovery) }
+            }
+        }
+        
+        isLoading = false
+        lastUpdated = Date()
+        updateMenuBarCallback?()
+        checkLowQuotaNotifications()
+        
+        if let pendingForce = pendingRefreshForceDiscovery {
+            pendingRefreshForceDiscovery = nil
+            refresh(forceDiscovery: pendingForce)
         }
     }
     
@@ -376,13 +361,15 @@ public class QuotaService: ObservableObject {
     
     private func refreshTokenActivity(codex: Bool, claude: Bool) {
         if codex {
-            TokenActivityService.shared.loadCodex { [weak self] summary in
-                if self?.codexActivity != summary { self?.codexActivity = summary }
+            Task {
+                let summary = await TokenActivityService.shared.loadCodex()
+                if codexActivity != summary { codexActivity = summary }
             }
         }
         if claude {
-            TokenActivityService.shared.loadClaude { [weak self] summary in
-                if self?.claudeActivity != summary { self?.claudeActivity = summary }
+            Task {
+                let summary = await TokenActivityService.shared.loadClaude()
+                if claudeActivity != summary { claudeActivity = summary }
             }
         }
     }
@@ -454,121 +441,66 @@ public class QuotaService: ObservableObject {
     
     // MARK: - Gemini Refresh Pipeline
     
-    private func refreshGemini(forceDiscovery: Bool, completion: @escaping () -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else {
-                completion()
+    private func refreshGemini(forceDiscovery: Bool) async {
+        guard let server = await runBlocking({ ProcessDiscovery.discover(forceRefresh: forceDiscovery) }) else {
+            isGeminiConnected = false
+            discoveredServer = nil
+            geminiErrorMessage = "Antigravity is not running. Launch Antigravity to monitor Gemini quotas."
+            return
+        }
+        
+        // The user tier is optional extra detail, so its failure doesn't fail the refresh
+        async let status: UserStatusResponse? = try? antigravityCall("GetUserStatus", server: server)
+        do {
+            let summary: QuotaSummaryResponse = try await antigravityCall("RetrieveUserQuotaSummary", server: server)
+            guard let quota = summary.response else { throw URLError(.cannotParseResponse) }
+            isGeminiConnected = true
+            discoveredServer = server
+            quotaSummary = quota
+            userStatus = await status?.userStatus
+            geminiErrorMessage = nil
+        } catch {
+            // The cached server isn't health-checked before use, so a failure may just mean
+            // Antigravity restarted on a new port. Rediscover once before reporting an error.
+            if !forceDiscovery {
+                ProcessDiscovery.invalidateCache()
+                await refreshGemini(forceDiscovery: true)
                 return
             }
-            
-            guard let server = ProcessDiscovery.discover(forceRefresh: forceDiscovery) else {
-                DispatchQueue.main.async {
-                    self.isGeminiConnected = false
-                    self.discoveredServer = nil
-                    self.geminiErrorMessage = "Antigravity is not running. Launch Antigravity to monitor Gemini quotas."
-                }
-                completion()
-                return
-            }
-            
-            let group = DispatchGroup()
-            var fetchedQuota: QuotaSummaryData?
-            var fetchedStatus: UserStatusData?
-            var quotaError: Error?
-            
-            group.enter()
-            self.fetchQuotaSummary(server: server) { result in
-                switch result {
-                case .success(let data):
-                    fetchedQuota = data
-                case .failure(let err):
-                    quotaError = err
-                }
-                group.leave()
-            }
-            
-            group.enter()
-            self.fetchUserStatus(server: server) { result in
-                switch result {
-                case .success(let data):
-                    fetchedStatus = data
-                case .failure:
-                    break
-                }
-                group.leave()
-            }
-            
-            group.notify(queue: .main) {
-                // The cached server isn't health-checked before use, so a failure may just mean
-                // Antigravity restarted on a new port. Rediscover once before reporting an error.
-                if fetchedQuota == nil && !forceDiscovery {
-                    ProcessDiscovery.invalidateCache()
-                    self.refreshGemini(forceDiscovery: true, completion: completion)
-                    return
-                }
-    
-                if let quota = fetchedQuota {
-                    self.isGeminiConnected = true
-                    self.discoveredServer = server
-                    self.quotaSummary = quota
-                    self.userStatus = fetchedStatus
-                    self.geminiErrorMessage = nil
-                } else {
-                    self.isGeminiConnected = false
-                    self.geminiErrorMessage = quotaError?.localizedDescription ?? "Failed to fetch model quota from Antigravity."
-                }
-                completion()
-            }
+            isGeminiConnected = false
+            geminiErrorMessage = error.localizedDescription
         }
     }
     
     // MARK: - Codex / ChatGPT Refresh Pipeline
     
-    private func refreshCodex(completion: @escaping () -> Void) {
-        CodexService.shared.fetch { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else {
-                    completion()
-                    return
-                }
-                switch result {
-                case .success(let payload):
-                    self.isCodexConnected = true
-                    self.codexRateLimits = payload.rateLimits
-                    self.codexAccount = payload.account
-                    self.codexUsage = payload.usage
-                    self.codexErrorMessage = nil
-                case .failure(let err):
-                    self.isCodexConnected = false
-                    self.codexErrorMessage = err.localizedDescription
-                }
-                completion()
-            }
+    private func refreshCodex() async {
+        do {
+            let payload = try await CodexService.shared.fetch()
+            isCodexConnected = true
+            codexRateLimits = payload.rateLimits
+            codexAccount = payload.account
+            codexUsage = payload.usage
+            codexErrorMessage = nil
+        } catch {
+            isCodexConnected = false
+            codexErrorMessage = error.localizedDescription
         }
     }
     
     // MARK: - Claude / Anthropic Refresh Pipeline
     
-    private func refreshClaude(forceRefresh: Bool = false, completion: @escaping () -> Void) {
+    private func refreshClaude(forceRefresh: Bool = false) async {
         let pollInterval = TimeInterval(refreshInterval.rawValue)
-        ClaudeService.shared.fetch(forceRefresh: forceRefresh, pollInterval: pollInterval) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else {
-                    completion()
-                    return
-                }
-                switch result {
-                case .success(let payload):
-                    self.isClaudeConnected = true
-                    self.claudeAccount = payload.account
-                    self.claudeLimits = payload.limits
-                    self.claudeErrorMessage = nil
-                case .failure(let err):
-                    self.isClaudeConnected = false
-                    self.claudeErrorMessage = err.localizedDescription
-                }
-                completion()
-            }
+        do {
+            let payload = try await ClaudeService.shared.fetch(forceRefresh: forceRefresh, pollInterval: pollInterval)
+            isClaudeConnected = true
+            claudeAccount = payload.account
+            claudeLimits = payload.limits
+            claudeErrorMessage = nil
+        } catch {
+            isClaudeConnected = false
+            claudeErrorMessage = error.localizedDescription
         }
     }
     
@@ -577,36 +509,32 @@ public class QuotaService: ObservableObject {
         isConsumingReset = true
         resetActionMessage = nil
         
-        CodexService.shared.consumeResetCredit { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isConsumingReset = false
-                
-                switch result {
-                case .success(let outcome):
-                    self.resetActionIsSuccess = outcome.isSuccess
-                    self.resetActionMessage = outcome.userMessage
-                    if outcome.isSuccess {
-                        self.refreshCodex {
-                            self.updateMenuBarCallback?()
-                        }
-                    }
-                    completion?(outcome.isSuccess, outcome.userMessage)
-                case .failure(let error):
-                    self.resetActionIsSuccess = false
-                    self.resetActionMessage = error.localizedDescription
-                    completion?(false, error.localizedDescription)
+        Task {
+            do {
+                let outcome = try await CodexService.shared.consumeResetCredit()
+                isConsumingReset = false
+                resetActionIsSuccess = outcome.isSuccess
+                resetActionMessage = outcome.userMessage
+                completion?(outcome.isSuccess, outcome.userMessage)
+                if outcome.isSuccess {
+                    await refreshCodex()
+                    updateMenuBarCallback?()
                 }
+            } catch {
+                isConsumingReset = false
+                resetActionIsSuccess = false
+                resetActionMessage = error.localizedDescription
+                completion?(false, error.localizedDescription)
             }
         }
     }
     
-    // MARK: - Gemini HTTP Calls
+    // MARK: - Antigravity Connect-RPC
     
-    private func fetchQuotaSummary(server: DiscoveredServer, completion: @escaping (Result<QuotaSummaryData, Error>) -> Void) {
-        guard let url = URL(string: "https://127.0.0.1:\(server.port)/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary") else {
-            completion(.failure(URLError(.badURL)))
-            return
+    /// POSTs an empty request to a LanguageServerService method on the local Antigravity server.
+    private func antigravityCall<T: Decodable>(_ method: String, server: DiscoveredServer) async throws -> T {
+        guard let url = URL(string: "https://127.0.0.1:\(server.port)/exa.language_server_pb.LanguageServerService/\(method)") else {
+            throw URLError(.badURL)
         }
         
         var request = URLRequest(url: url)
@@ -617,62 +545,8 @@ public class QuotaService: ObservableObject {
         request.httpBody = Data("{}".utf8)
         request.timeoutInterval = 4.0
         
-        session.dataTask(with: request) { data, _, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            guard let data = data else {
-                completion(.failure(URLError(.zeroByteResource)))
-                return
-            }
-            do {
-                let decoded = try JSONDecoder().decode(QuotaSummaryResponse.self, from: data)
-                if let quotaData = decoded.response {
-                    completion(.success(quotaData))
-                } else {
-                    completion(.failure(URLError(.cannotParseResponse)))
-                }
-            } catch {
-                completion(.failure(error))
-            }
-        }.resume()
-    }
-    
-    private func fetchUserStatus(server: DiscoveredServer, completion: @escaping (Result<UserStatusData, Error>) -> Void) {
-        guard let url = URL(string: "https://127.0.0.1:\(server.port)/exa.language_server_pb.LanguageServerService/GetUserStatus") else {
-            completion(.failure(URLError(.badURL)))
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(server.csrfToken, forHTTPHeaderField: "X-Codeium-Csrf-Token")
-        request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
-        request.httpBody = Data("{}".utf8)
-        request.timeoutInterval = 4.0
-        
-        session.dataTask(with: request) { data, _, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            guard let data = data else {
-                completion(.failure(URLError(.zeroByteResource)))
-                return
-            }
-            do {
-                let decoded = try JSONDecoder().decode(UserStatusResponse.self, from: data)
-                if let status = decoded.userStatus {
-                    completion(.success(status))
-                } else {
-                    completion(.failure(URLError(.cannotParseResponse)))
-                }
-            } catch {
-                completion(.failure(error))
-            }
-        }.resume()
+        let (data, _) = try await session.data(for: request)
+        return try JSONDecoder().decode(T.self, from: data)
     }
     
     // MARK: - Computed Properties for Helpers

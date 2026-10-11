@@ -12,7 +12,7 @@ public struct ChatGPTQuotaCardView: View {
         account: CodexAccountInfo?,
         rateLimits: CodexRateLimitsResponse?,
         usage: CodexUsageSummary?,
-        service: QuotaService = .shared
+        service: QuotaService
     ) {
         self.account = account
         self.rateLimits = rateLimits

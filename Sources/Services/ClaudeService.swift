@@ -4,7 +4,9 @@ import SQLite3
 import Security
 import LocalAuthentication
 
-public final class ClaudeService {
+/// An actor, so the pacing and last-good state below is only touched by one fetch at a time.
+/// QuotaService never overlaps refreshes, so fetches don't interleave across their awaits in practice.
+public actor ClaudeService {
     public static let shared = ClaudeService()
     
     private let session: URLSession
@@ -16,7 +18,7 @@ public final class ClaudeService {
         self.session = URLSession(configuration: config)
     }
     
-    public struct ClaudeState {
+    public struct ClaudeState: Sendable {
         public let account: ClaudeAccountInfo?
         public let limits: ClaudeUsageLimits?
         public let isConnected: Bool
@@ -28,38 +30,45 @@ public final class ClaudeService {
         }
     }
     
-    /// Fetches run one at a time on this queue, so the cached state below is never touched concurrently.
-    private let fetchQueue = DispatchQueue(label: "AIUsage.ClaudeService.fetch", qos: .userInitiated)
-    
-    /// - Parameter pollInterval: The user's refresh interval in seconds (0 = manual); paces OAuth usage requests.
-    public func fetch(forceRefresh: Bool = false, pollInterval: TimeInterval, completion: @escaping (Result<ClaudeState, Error>) -> Void) {
-        fetchQueue.async {
-            self.usagePollInterval = pollInterval
-            if forceRefresh {
-                ClaudeKeyChainHelper.resetKeyCache()
-            }
-            
-            // 1. Try real desktop session via Claude Safe Storage cookie
-            if let activeDesktopState = self.fetchFromDesktopSession() {
-                completion(.success(activeDesktopState))
-                return
-            }
-            
-            // 2. Fall back to local CLI config if desktop session not found
-            if let cliState = self.fetchFromClaudeJson() {
-                completion(.success(cliState))
-                return
-            }
-            
-            completion(.failure(NSError(domain: "ClaudeService", code: 404, userInfo: [
-                NSLocalizedDescriptionKey: "No active Claude account detected. Please launch and log in to Claude.app."
-            ])))
+    /// - Parameter pollInterval: The user's refresh interval in seconds (0 = manual); paces usage requests.
+    public func fetch(forceRefresh: Bool = false, pollInterval: TimeInterval) async throws -> ClaudeState {
+        usagePollInterval = pollInterval
+        if forceRefresh {
+            ClaudeKeyChainHelper.resetKeyCache()
         }
+        
+        // 1. Try real desktop session via Claude Safe Storage cookie
+        if let activeDesktopState = await fetchFromDesktopSession() {
+            return activeDesktopState
+        }
+        
+        // 2. Fall back to local CLI config if desktop session not found
+        if let cliState = await fetchFromClaudeJson() {
+            return cliState
+        }
+        
+        throw NSError(domain: "ClaudeService", code: 404, userInfo: [
+            NSLocalizedDescriptionKey: "No active Claude account detected. Please launch and log in to Claude.app."
+        ])
+    }
+    
+    /// Sends `request`, returning nil on transport errors or non-HTTP responses.
+    private func send(_ request: URLRequest) async -> (data: Data, response: HTTPURLResponse)? {
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse else { return nil }
+        return (data, http)
+    }
+    
+    /// Seconds to back off after a 429, or nil when `response` isn't one.
+    private func retryAfter(_ response: HTTPURLResponse?) -> TimeInterval? {
+        guard let response = response, response.statusCode == 429 else { return nil }
+        let seconds = response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init) ?? 0
+        return max(seconds, rateLimitBackoff)
     }
     
     // MARK: - Live Desktop Session Fetcher (Real Account & Real Quotas)
     
-    private func fetchFromDesktopSession() -> ClaudeState? {
+    private func fetchFromDesktopSession() async -> ClaudeState? {
         guard let key = ClaudeKeyChainHelper.getSafeStorageKey(),
               let sessionKey = ClaudeKeyChainHelper.getCookie(name: "sessionKey", key: key) else {
             return nil
@@ -79,25 +88,10 @@ public final class ClaudeService {
         orgsReq.setValue("sessionKey=" + sessionKey, forHTTPHeaderField: "Cookie")
         orgsReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         
-        let semOrgs = DispatchSemaphore(value: 0)
-        var fetchedOrg: [String: Any]? = nil
-        
-        session.dataTask(with: orgsReq) { data, _, _ in
-            defer { semOrgs.signal() }
-            guard let data = data,
-                  let orgsList = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                  !orgsList.isEmpty else { return }
-            
-            if let targetUuid = lastOrgFromCookie,
-               let match = orgsList.first(where: { ($0["uuid"] as? String) == targetUuid }) {
-                fetchedOrg = match
-            } else {
-                fetchedOrg = orgsList.first
-            }
-        }.resume()
-        semOrgs.wait()
-        
-        guard let org = fetchedOrg else {
+        // An expired session returns an error object rather than a list, so this falls through to the CLI path
+        guard let orgsData = await send(orgsReq)?.data,
+              let orgsList = try? JSONSerialization.jsonObject(with: orgsData) as? [[String: Any]],
+              let org = orgsList.first(where: { ($0["uuid"] as? String) == lastOrgFromCookie }) ?? orgsList.first else {
             return nil
         }
         
@@ -147,24 +141,11 @@ public final class ClaudeService {
         usageReq.setValue("sessionKey=" + sessionKey, forHTTPHeaderField: "Cookie")
         usageReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         
-        let semUsage = DispatchSemaphore(value: 0)
-        var fetchedLimits: ClaudeUsageLimits? = nil
-        var retryAfterSeconds: Double? = nil
+        let usage = await send(usageReq)
+        let fetchedLimits = usage?.response.statusCode == 200 ? Self.parseUsageLimits(usage?.data) : nil
         
-        session.dataTask(with: usageReq) { data, resp, _ in
-            defer { semUsage.signal() }
-            guard let http = resp as? HTTPURLResponse else { return }
-            if http.statusCode == 429 {
-                retryAfterSeconds = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init) ?? 0
-            }
-            guard http.statusCode == 200 else { return }
-            fetchedLimits = Self.parseUsageLimits(data)
-        }.resume()
-        semUsage.wait()
-        
-        // Applied here rather than in the callback so state is only mutated on fetchQueue
-        if let secs = retryAfterSeconds {
-            desktopRetryAfter = Date().addingTimeInterval(max(secs, rateLimitBackoff))
+        if let backoff = retryAfter(usage?.response) {
+            desktopRetryAfter = Date().addingTimeInterval(backoff)
         } else if fetchedLimits != nil {
             desktopRetryAfter = nextPacedRequest(after: requestStart)
         }
@@ -175,7 +156,7 @@ public final class ClaudeService {
     
     // MARK: - Fallback Claude CLI ~/.claude.json
     
-    private func fetchFromClaudeJson() -> ClaudeState? {
+    private func fetchFromClaudeJson() async -> ClaudeState? {
         let home = NSHomeDirectory()
         let claudeJsonURL = URL(fileURLWithPath: "\(home)/.claude.json")
         guard let data = try? Data(contentsOf: claudeJsonURL),
@@ -209,7 +190,7 @@ public final class ClaudeService {
             subscriptionCreatedAt: createdAt
         )
         
-        return ClaudeState(account: account, limits: fetchUsageWithOAuth(), isConnected: true)
+        return ClaudeState(account: account, limits: await fetchUsageWithOAuth(), isConnected: true)
     }
     
     /// Parses a usage payload (`five_hour`, `seven_day`, ...) shared by the claude.ai and OAuth endpoints.
@@ -271,11 +252,11 @@ public final class ClaudeService {
     /// and pick up the new token once Claude Code refreshes it in the Keychain.
     /// Requests follow the user's refresh interval; the last good result is reused for up to `staleGrace`, after which nil
     /// (the "Connection Lost" state) is returned.
-    private func fetchUsageWithOAuth() -> ClaudeUsageLimits? {
+    private func fetchUsageWithOAuth() async -> ClaudeUsageLimits? {
         var fresh: ClaudeUsageLimits?
         if Date() >= oauthRetryAfter {
             let requestStart = Date()
-            fresh = requestUsage()
+            fresh = await requestUsage()
             if fresh != nil {
                 oauthRetryAfter = nextPacedRequest(after: requestStart)
             }
@@ -293,31 +274,18 @@ public final class ClaudeService {
         return Date().timeIntervalSince(lastGoodAt) <= staleGrace ? lastGoodLimits : nil
     }
     
-    private func requestUsage() -> ClaudeUsageLimits? {
+    private func requestUsage() async -> ClaudeUsageLimits? {
         guard let token = ClaudeKeyChainHelper.getClaudeCodeOAuthToken() else { return nil }
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         
-        let sem = DispatchSemaphore(value: 0)
-        var limits: ClaudeUsageLimits? = nil
-        var retryAfterSeconds: Double? = nil
-        session.dataTask(with: req) { data, resp, _ in
-            defer { sem.signal() }
-            guard let http = resp as? HTTPURLResponse else { return }
-            if http.statusCode == 429, let ra = http.value(forHTTPHeaderField: "Retry-After"), let secs = Double(ra) {
-                retryAfterSeconds = secs
-            }
-            guard http.statusCode == 200 else { return }
-            limits = Self.parseUsageLimits(data)
-        }.resume()
-        sem.wait()
-        
-        // Applied here rather than in the callback so state is only mutated on fetchQueue
-        if let secs = retryAfterSeconds {
-            oauthRetryAfter = Date().addingTimeInterval(max(secs, rateLimitBackoff))
+        let usage = await send(req)
+        if let backoff = retryAfter(usage?.response) {
+            oauthRetryAfter = Date().addingTimeInterval(backoff)
         }
-        return limits
+        guard usage?.response.statusCode == 200 else { return nil }
+        return Self.parseUsageLimits(usage?.data)
     }
     
     public static func parseDate(_ val: Any?) -> Date? {

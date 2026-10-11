@@ -13,7 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         // Initialize status bar item and controller
-        statusBarController = StatusBarController()
+        statusBarController = StatusBarController(service: .shared)
         
         // Request user notification permissions for low-quota spending alerts
         NotificationManager.shared.requestAuthorization()

@@ -7,7 +7,7 @@ public struct ProviderFocusSubmenuView: View {
     
     @State private var hoveredRow: String? = nil
     
-    public init(service: QuotaService = .shared, onDismiss: (() -> Void)? = nil) {
+    public init(service: QuotaService, onDismiss: (() -> Void)? = nil) {
         self.service = service
         self.onDismiss = onDismiss
     }

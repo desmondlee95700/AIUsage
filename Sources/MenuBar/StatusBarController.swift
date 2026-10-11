@@ -1,17 +1,17 @@
 import Cocoa
 import SwiftUI
 
+@MainActor
 public class StatusBarController {
     private var statusItem: NSStatusItem
     private var popover: NSPopover
     private var service: QuotaService
     private var eventMonitor: Any?
-    private var wakeObserver: NSObjectProtocol?
     /// Horizontal extent of each provider's section within the rendered menu bar image
     /// (image coordinates), used to open the popover on the provider that was clicked.
     private var providerSegments: [(provider: AIProvider, range: ClosedRange<CGFloat>)] = []
     
-    public init(service: QuotaService = .shared) {
+    public init(service: QuotaService) {
         self.service = service
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
@@ -36,10 +36,12 @@ public class StatusBarController {
         
         // Quotas go stale over sleep and Antigravity may come back on a new port, so
         // rediscover after wake. The short delay lets Wi-Fi reconnect first.
-        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        // The controller lives for the app's lifetime, so the observer is never removed.
+        NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
                 self?.service.refresh(forceDiscovery: true)
             }
         }
@@ -47,12 +49,6 @@ public class StatusBarController {
         // Background check for updates (silent)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
             UpdateService.shared.checkForUpdates(isUserInitiated: false)
-        }
-    }
-    
-    deinit {
-        if let wakeObserver = wakeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
         }
     }
     

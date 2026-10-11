@@ -11,7 +11,7 @@ public struct MainUsageView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var glassObserver: LiquidGlassObserver
 
-    public init(service: QuotaService = .shared) {
+    public init(service: QuotaService) {
         self.service = service
     }
 
