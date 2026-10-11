@@ -251,21 +251,19 @@ public struct OverflowScrollView<Content: View>: View {
                         Color.clear.frame(height: 1).id(Self.bottomID)
                     }
                     .background(
+                        // Tracks where the content ends relative to the viewport. Read directly rather
+                        // than through a preference: on macOS, preferences set inside a ScrollView's
+                        // content don't propagate out of it.
                         GeometryReader { geo in
-                            Color.clear.preference(
-                                key: OverflowContentKey.self,
-                                value: geo.frame(in: .named(Self.spaceName)).maxY
-                            )
+                            let contentMaxY = geo.frame(in: .named(Self.spaceName)).maxY
+                            Color.clear
+                                .onAppear { updateHiddenBelow(contentMaxY: contentMaxY, viewportHeight: viewport.size.height) }
+                                .onChange(of: contentMaxY) { updateHiddenBelow(contentMaxY: $0, viewportHeight: viewport.size.height) }
+                                .onChange(of: viewport.size.height) { updateHiddenBelow(contentMaxY: contentMaxY, viewportHeight: $0) }
                         }
                     )
                 }
                 .coordinateSpace(name: Self.spaceName)
-                .onPreferenceChange(OverflowContentKey.self) { contentMaxY in
-                    let below = max(0, contentMaxY - viewport.size.height)
-                    if (below > 8) != (hiddenBelow > 8) || abs(below - hiddenBelow) > 1 {
-                        hiddenBelow = below
-                    }
-                }
                 .mask(fadeMask(height: viewport.size.height))
                 .overlay(alignment: .bottom) {
                     if hasMoreBelow {
@@ -279,6 +277,13 @@ public struct OverflowScrollView<Content: View>: View {
                 }
                 .animation(LiquidGlassTokens.motion(LiquidGlassTokens.hoverSpring, reduceMotion: reduceMotion), value: hasMoreBelow)
             }
+        }
+    }
+
+    private func updateHiddenBelow(contentMaxY: CGFloat, viewportHeight: CGFloat) {
+        let below = max(0, contentMaxY - viewportHeight)
+        if (below > 8) != hasMoreBelow || abs(below - hiddenBelow) > 1 {
+            hiddenBelow = below
         }
     }
 
@@ -308,13 +313,6 @@ public struct OverflowScrollView<Content: View>: View {
         .buttonStyle(.plain)
         .padding(.bottom, 4)
         .help("More below")
-    }
-}
-
-private struct OverflowContentKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
