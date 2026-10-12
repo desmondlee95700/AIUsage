@@ -215,4 +215,25 @@ final class QuotaSelectionTests: XCTestCase {
             XCTAssertFalse(account.canSeeUsageLimits, type ?? "nil")
         }
     }
+
+    // MARK: - Menu bar meter
+
+    func testMeterNeedsBothWindows() {
+        XCTAssertNil(MenuBarMeter(fiveHour: 0.5, weekly: nil))
+        XCTAssertNil(MenuBarMeter(fiveHour: nil, weekly: 0.5))
+        XCTAssertNotNil(MenuBarMeter(fiveHour: 0.5, weekly: 0.5))
+    }
+
+    func testMeterHighlightsTighterWindow() {
+        XCTAssertTrue(MenuBarMeter(fiveHour: 0.9, weekly: 0.38)?.isWeeklyBinding == true)
+        XCTAssertTrue(MenuBarMeter(fiveHour: 0.2, weekly: 0.8)?.isWeeklyBinding == false)
+        // Ties go to the 5-hour window, as the menu bar figure does
+        XCTAssertTrue(MenuBarMeter(fiveHour: 0.5, weekly: 0.5)?.isWeeklyBinding == false)
+    }
+
+    func testMeterClampsFractions() {
+        let meter = MenuBarMeter(fiveHour: -0.2, weekly: 1.4)
+        XCTAssertEqual(meter?.fiveHour, 0)
+        XCTAssertEqual(meter?.weekly, 1)
+    }
 }

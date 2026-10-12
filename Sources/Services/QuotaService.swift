@@ -640,6 +640,21 @@ public class QuotaService: ObservableObject {
         }
     }
     
+    /// The 5-hour and weekly bars drawn beside a provider's menu bar figure, or nil when the
+    /// provider is disconnected or doesn't report both windows.
+    public func menuBarMeter(for provider: AIProvider) -> MenuBarMeter? {
+        guard isProviderConnected(provider) else { return nil }
+        switch provider {
+        case .gemini:
+            // primary5hBucket falls back to any non-weekly bucket, so it is never the weekly one itself
+            return MenuBarMeter(fiveHour: primary5hBucket?.remainingFraction, weekly: primaryWeeklyBucket?.remainingFraction)
+        case .chatgpt:
+            return MenuBarMeter(fiveHour: codex5hWindow?.remainingFraction, weekly: codexWeeklyWindow?.remainingFraction)
+        case .claude:
+            return MenuBarMeter(fiveHour: claude5hPercentage.map { Double($0) / 100 }, weekly: claudeWeeklyPercentage.map { Double($0) / 100 })
+        }
+    }
+
     /// Whether the menu bar figure for a provider comes from its weekly limit rather than the
     /// 5-hour one, so the popover can say which limit the number belongs to.
     public func isWeeklyBinding(for provider: AIProvider) -> Bool {
@@ -691,7 +706,11 @@ public class QuotaService: ObservableObject {
         if providers.contains(.gemini) {
             if isGeminiConnected {
                 let tier = userStatus?.userTier?.name ?? "Connected"
-                if let bucket = quotaSummary?.bindingBucket {
+                if menuBarMeter(for: .gemini) != nil, let short = primary5hBucket, let weekly = primaryWeeklyBucket {
+                    let shortReset = short.formattedResetCountdown ?? "Active"
+                    let weeklyReset = weekly.formattedResetCountdown ?? "Active"
+                    lines.append("• Antigravity (Google): 5h: \(short.percentage)% (\(shortReset)) · Weekly: \(weekly.percentage)% (\(weeklyReset)) (\(tier))")
+                } else if let bucket = quotaSummary?.bindingBucket {
                     let reset = bucket.formattedResetCountdown ?? "Active"
                     let windowDesc = isWeeklyBinding(for: .gemini) ? "Weekly" : "5h limit"
                     lines.append("• Antigravity (Google): \(bucket.percentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
@@ -747,7 +766,7 @@ public class QuotaService: ObservableObject {
         if providers.isEmpty {
             lines.append("• No AI providers selected")
         } else {
-            lines.append("The menu bar shows each provider's lowest limit. Click for details, right-click for actions.")
+            lines.append("The menu bar shows each provider's lowest limit; its bars show the 5-hour (top) and weekly (bottom) limits. Click for details, right-click for actions.")
         }
         return lines.joined(separator: "\n")
     }
