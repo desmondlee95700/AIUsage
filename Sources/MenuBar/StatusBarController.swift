@@ -140,6 +140,9 @@ public class StatusBarController {
         button.title = ""
         button.attributedTitle = NSAttributedString()
         button.toolTip = service.menuBarTooltip
+        button.setAccessibilityLabel((["AIUsage"] + service.selectedInstalledProviders.map { provider in
+            "\(provider.rawValue): " + service.menuBarQuotaLines(for: provider, includeWindowLabels: true).joined(separator: ", ")
+        }).joined(separator: "; "))
     }
     
     // MARK: - Template Menu Bar Image Generator
@@ -161,56 +164,61 @@ public class StatusBarController {
             return icon
         }
         
-        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 10
+        paragraph.maximumLineHeight = 10
         let textAttrs: [NSAttributedString.Key: Any] = [
+            .paragraphStyle: paragraph,
             .font: font,
             .foregroundColor: NSColor.black
         ]
         let secondaryAttrs: [NSAttributedString.Key: Any] = [
+            .paragraphStyle: paragraph,
             .font: font,
             .foregroundColor: NSColor(white: 0, alpha: 0.45)
         ]
         
         let iconSize: CGFloat = 14.0
-        let height: CGFloat = 18.0
+        let height: CGFloat = 22.0
         
         // Critical quota gets a warning glyph; the image stays a template so it follows the menu bar's appearance
         let warningSize: CGFloat = 11.0
         let warningGlyph = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 9.5, weight: .bold))
         
-        // Twin micro-bars (5-hour over weekly). The bar the figure comes from is drawn solid and the
-        // other faded, so the template image tells the windows apart in any menu bar appearance.
+        // Align each progress bar with its percentage; the 5-hour row is above the weekly row.
         let meterLead: CGFloat = 3.0
-        let meterBarWidth: CGFloat = 12.0
+        let meterBarWidth: CGFloat = 18.0
         let meterBarHeight: CGFloat = 3.0
-        let meterGap: CGFloat = 2.0
+        let lineHeight: CGFloat = 10.0
         
         struct ProviderRenderItem {
             let provider: AIProvider
             let icon: NSImage?
-            let text: NSAttributedString
+            let lines: [NSAttributedString]
+            let percentages: [Int?]
             /// Disconnected or without data: drawn faded so live figures stand out
             let isDimmed: Bool
             let isCritical: Bool
-            let meter: MenuBarMeter?
             var iconWidth: CGFloat { icon != nil ? 14.0 : 0 }
-            var textWidth: CGFloat { text.size().width }
+            var textWidth: CGFloat { lines.map { $0.size().width }.max() ?? 0 }
         }
         let items = providers.map { provider in
             let percent = service.menuBarPercentage(for: provider)
             let isDimmed = !service.isProviderConnected(provider) || (percent == nil && provider != .claude)
+            let lines = service.menuBarQuotaLines(for: provider)
             return ProviderRenderItem(
                 provider: provider,
                 icon: AppIconHelper.template(for: provider),
-                text: NSAttributedString(string: " " + service.badgeText(for: provider), attributes: isDimmed ? secondaryAttrs : textAttrs),
+                lines: lines.map { NSAttributedString(string: " " + $0, attributes: isDimmed ? secondaryAttrs : textAttrs) },
+                percentages: lines.map { $0.hasSuffix("%") ? Int($0.dropLast()) : nil },
                 isDimmed: isDimmed,
-                isCritical: percent.map { QuotaLevel(fraction: Double($0) / 100.0) == .critical } ?? false,
-                meter: service.menuBarMeter(for: provider)
+                isCritical: percent.map { QuotaLevel(fraction: Double($0) / 100.0) == .critical } ?? false
             )
         }
         func meterWidth(_ item: ProviderRenderItem) -> CGFloat {
-            item.meter != nil ? meterLead + meterBarWidth : 0
+            item.percentages.contains { $0 != nil } ? meterLead + meterBarWidth : 0
         }
         func warningWidth(_ item: ProviderRenderItem) -> CGFloat {
             item.isCritical && warningGlyph != nil ? warningSize + 2 : 0
@@ -238,32 +246,11 @@ public class StatusBarController {
             let iconY: CGFloat = (height - iconSize) / 2
             
             for (idx, item) in items.enumerated() {
-                let textY: CGFloat = (height - item.text.size().height) / 2
+                let textY = (height - CGFloat(item.lines.count) * lineHeight) / 2
                 
                 if let ic = item.icon {
                     ic.draw(in: NSRect(x: x, y: iconY, width: iconSize, height: iconSize), from: .zero, operation: .sourceOver, fraction: item.isDimmed ? 0.45 : 1.0)
                     x += iconSize
-                }
-                if let meter = item.meter {
-                    let meterY = (height - meterBarHeight * 2 - meterGap) / 2
-                    // Flipped is false, so the 5-hour bar sits at the higher y
-                    let rows: [(fraction: Double, y: CGFloat, isBinding: Bool)] = [
-                        (meter.fiveHour, meterY + meterBarHeight + meterGap, !meter.isWeeklyBinding),
-                        (meter.weekly, meterY, meter.isWeeklyBinding)
-                    ]
-                    let radius = meterBarHeight / 2
-                    for row in rows {
-                        let track = NSRect(x: x + meterLead, y: row.y, width: meterBarWidth, height: meterBarHeight)
-                        NSColor(white: 0, alpha: 0.22).setFill()
-                        NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
-                        guard row.fraction > 0 else { continue }
-                        // Keep a sliver visible for any non-zero remainder
-                        var fill = track
-                        fill.size.width = max(meterBarHeight, meterBarWidth * CGFloat(row.fraction))
-                        NSColor(white: 0, alpha: row.isBinding ? 1.0 : 0.5).setFill()
-                        NSBezierPath(roundedRect: fill, xRadius: radius, yRadius: radius).fill()
-                    }
-                    x += meterLead + meterBarWidth
                 }
                 if item.isCritical, let glyph = warningGlyph {
                     let glyphHeight = warningSize * glyph.size.height / max(glyph.size.width, 1)
@@ -271,11 +258,30 @@ public class StatusBarController {
                                from: .zero, operation: .sourceOver, fraction: 1.0)
                     x += warningSize + 2
                 }
-                item.text.draw(at: NSPoint(x: x, y: textY))
-                x += item.textWidth
+                for (lineIndex, line) in item.lines.enumerated() {
+                    let y = textY + CGFloat(item.lines.count - lineIndex - 1) * lineHeight
+                    line.draw(at: NSPoint(x: x, y: y))
+                    if let percentage = item.percentages[lineIndex] {
+                        let track = NSRect(x: x + item.textWidth + meterLead,
+                                           y: y + (lineHeight - meterBarHeight) / 2,
+                                           width: meterBarWidth, height: meterBarHeight)
+                        let radius = meterBarHeight / 2
+                        let path = NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius)
+                        NSColor(white: 0, alpha: 0.22).setFill()
+                        path.fill()
+                        NSGraphicsContext.saveGraphicsState()
+                        path.addClip()
+                        NSColor.black.setFill()
+                        NSRect(x: track.minX, y: track.minY,
+                               width: meterBarWidth * CGFloat(max(0, min(100, percentage))) / 100,
+                               height: track.height).fill()
+                        NSGraphicsContext.restoreGraphicsState()
+                    }
+                }
+                x += item.textWidth + meterWidth(item)
                 
                 if idx < items.count - 1 {
-                    sepText.draw(at: NSPoint(x: x, y: textY))
+                    sepText.draw(at: NSPoint(x: x, y: (height - sepText.size().height) / 2))
                     x += sepWidth
                 }
             }
