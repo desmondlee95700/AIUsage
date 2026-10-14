@@ -33,7 +33,10 @@ final class MenuBarQuotaTests: XCTestCase {
         service.isGeminiConnected = true
         service.quotaSummary = try JSONDecoder().decode(QuotaSummaryData.self, from: Data(#"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"week","displayName":"Weekly","window":"WEEKLY","remainingFraction":0.9}]}]}"#.utf8))
         XCTAssertEqual(service.menuBarQuotaLines(for: .gemini), ["90%"])
-        service.quotaSummary = try JSONDecoder().decode(QuotaSummaryData.self, from: Data(#"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"5h","displayName":"5-hour","window":"5h","remainingFraction":0.53},{"bucketId":"weekly","displayName":"Weekly","window":"weekly","remainingFraction":0.9}]}]}"#.utf8))
+        let bothCaps = #"{"groups":[{"displayName":"Gemini","buckets":["#
+            + #"{"bucketId":"5h","displayName":"5-hour","window":"5h","remainingFraction":0.53},"#
+            + #"{"bucketId":"weekly","displayName":"Weekly","window":"weekly","remainingFraction":0.9}]}]}"#
+        service.quotaSummary = try JSONDecoder().decode(QuotaSummaryData.self, from: Data(bothCaps.utf8))
         XCTAssertEqual(service.menuBarQuotaLines(for: .gemini), ["53%", "90%"])
     }
 }
