@@ -9,8 +9,8 @@ echo "🔨 Building release binary..."
 swift build -c release
 
 APP_NAME="AIUsage"
-APP_VERSION="2.6.2"
-APP_BUILD="23"
+APP_VERSION="2.6.3"
+APP_BUILD="24"
 APP_DIR="$DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
