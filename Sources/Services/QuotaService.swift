@@ -630,6 +630,27 @@ public class QuotaService: ObservableObject {
     
     // MARK: - Menu Bar Formatter Helpers
     
+    func menuBarQuotaLines(for provider: AIProvider, includeWindowLabels: Bool = false) -> [String] {
+        guard isProviderConnected(provider) else { return ["Off"] }
+        let short: Int?
+        let weekly: Int?
+        switch provider {
+        case .gemini:
+            short = primary5hBucket?.remainingFraction.map { Int(($0 * 100).rounded()) }
+            weekly = primaryWeeklyBucket?.remainingFraction.map { Int(($0 * 100).rounded()) }
+        case .chatgpt:
+            short = codex5hWindow?.windowDurationMins == 300 ? codex5hPercentage : nil
+            weekly = codexWeeklyPercentage
+        case .claude:
+            short = claude5hPercentage
+            weekly = claudeWeeklyPercentage
+        }
+        var lines: [String] = []
+        if let short { lines.append("\(short)%" + (includeWindowLabels ? " 5h" : "")) }
+        if let weekly { lines.append("\(weekly)%" + (includeWindowLabels ? " wk" : "")) }
+        return lines.isEmpty ? [badgeText(for: provider)] : lines
+    }
+
     /// Remaining percentage the menu bar shows for a provider, or nil when disconnected or without data.
     public func menuBarPercentage(for provider: AIProvider) -> Int? {
         guard isProviderConnected(provider) else { return nil }
@@ -766,7 +787,7 @@ public class QuotaService: ObservableObject {
         if providers.isEmpty {
             lines.append("• No AI providers selected")
         } else {
-            lines.append("The menu bar shows each provider's lowest limit; its bars show the 5-hour (top) and weekly (bottom) limits. Click for details, right-click for actions.")
+            lines.append("The menu bar shows 5-hour limits on top and weekly limits below, with a progress bar beside each percentage. Click for details, right-click for actions.")
         }
         return lines.joined(separator: "\n")
     }
