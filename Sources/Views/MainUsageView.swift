@@ -216,19 +216,35 @@ public struct MainUsageView: View {
                         .shadow(color: LiquidGlassPalette.aiBlue.opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                // Name with the version beneath, stacked so the header row doesn't grow wider
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("AIUsage")
-                        .font(.system(size: 13.5, weight: .bold))
-                        .foregroundColor(LiquidGlassText.primary)
-                    Text(AppVersion.displayString)
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundColor(LiquidGlassText.tertiary)
+                VStack(alignment: .leading, spacing: 3) {
+                    // Name with the version beneath, stacked so the header row doesn't grow wider
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("AIUsage")
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundColor(LiquidGlassText.primary)
+                        Text(AppVersion.displayString)
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundColor(LiquidGlassText.tertiary)
+                    }
+                    .lineLimit(1)
+                    .fixedSize()
+                    .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
+
+                    if let update = updateService.availableUpdate {
+                        Button(action: { updateService.promptUpdate(update) }) {
+                            Text("New \(update.tagName)")
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .foregroundColor(LiquidGlassText.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .liquidGlassPill(isProminent: false, tint: LiquidGlassPalette.aiBlue)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Update \(update.tagName) available. Click to download.")
+                    }
                 }
-                .lineLimit(1)
-                .fixedSize()
-                .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
+
             }
             
             // Freshness pill: how current the numbers are, re-rendered as they age.
