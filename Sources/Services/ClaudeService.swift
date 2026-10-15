@@ -288,8 +288,30 @@ public actor ClaudeService {
         if let backoff = retryAfter(usage?.response) {
             oauthRetryAfter = Date().addingTimeInterval(backoff)
         }
+        if usage?.response.statusCode == 401 {
+            ClaudeKeyChainHelper.invalidateClaudeCodeToken()
+        }
         guard usage?.response.statusCode == 200 else { return nil }
         return Self.parseUsageLimits(usage?.data)
+    }
+
+    /// Claude Code's OAuth access token and when it expires.
+    struct ClaudeCodeToken: Equatable {
+        let value: String
+        let expiresAt: Date?
+
+        func isExpired(at now: Date = Date()) -> Bool {
+            expiresAt.map { $0 <= now } ?? false
+        }
+    }
+
+    /// Parses the JSON Claude Code stores in its "Claude Code-credentials" Keychain item.
+    static func parseClaudeCodeCredentials(_ data: Data) -> ClaudeCodeToken? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
+        let expiresAt = (oauth["expiresAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+        return ClaudeCodeToken(value: token, expiresAt: expiresAt)
     }
     
     public static func parseDate(_ val: Any?) -> Date? {
@@ -309,6 +331,7 @@ public actor ClaudeService {
 private struct ClaudeKeyChainHelper {
     private static var cachedSafeStorageKey: [UInt8]?
     private static var hasAttemptedSafeStorageKey = false
+    private static var cachedClaudeCodeToken: ClaudeService.ClaudeCodeToken?
 
     static func getSafeStorageKey() -> [UInt8]? {
         if hasAttemptedSafeStorageKey {
@@ -355,30 +378,45 @@ private struct ClaudeKeyChainHelper {
         return nil
     }
     
-    /// Reads the Claude Code OAuth access token from the macOS Keychain (local only).
+    /// Reads the Claude Code OAuth access token (local only), cached in memory until it expires.
     static func getClaudeCodeOAuthToken() -> String? {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context
-        ]
-        
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess,
-              let data = item as? Data,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
-        if let expiresAt = oauth["expiresAt"] as? Double, Date(timeIntervalSince1970: expiresAt / 1000) < Date() {
+        if let cached = cachedClaudeCodeToken, !cached.isExpired() {
+            return cached.value
+        }
+        cachedClaudeCodeToken = nil
+        guard let data = readClaudeCodeCredentials(),
+              let token = ClaudeService.parseClaudeCodeCredentials(data),
+              !token.isExpired() else { return nil }
+        cachedClaudeCodeToken = token
+        return token.value
+    }
+
+    /// Drops the cached token, e.g. after a 401 when Claude Code has already rotated it.
+    static func invalidateClaudeCodeToken() {
+        cachedClaudeCodeToken = nil
+    }
+
+    /// Reads the "Claude Code-credentials" item through /usr/bin/security instead of SecItemCopyMatching.
+    /// Claude Code writes the item with that tool, so its ACL already trusts it and macOS doesn't prompt.
+    /// A direct read asks for the login password on every AIUsage build (the ad-hoc signature changes,
+    /// so "Always Allow" doesn't stick) and again whenever Claude Code rewrites the item.
+    private static func readClaudeCodeCredentials() -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return process.terminationStatus == 0 ? data : nil
+        } catch {
             return nil
         }
-        return token
     }
     
     static func getCookie(name: String, key: [UInt8]) -> String? {
@@ -434,5 +472,6 @@ private struct ClaudeKeyChainHelper {
     static func resetKeyCache() {
         cachedSafeStorageKey = nil
         hasAttemptedSafeStorageKey = false
+        cachedClaudeCodeToken = nil
     }
 }

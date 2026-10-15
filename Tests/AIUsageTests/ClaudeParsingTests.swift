@@ -79,6 +79,23 @@ final class ClaudeParsingTests: XCTestCase {
         XCTAssertNil(ClaudeService.parseUsageLimits(nil))
     }
 
+    func testParseClaudeCodeCredentials() {
+        // `security -w` output ends with a newline
+        let json = #"{"claudeAiOauth":{"accessToken":"tok","refreshToken":"r","expiresAt":1791000000000}}"# + "\n"
+        let token = ClaudeService.parseClaudeCodeCredentials(Data(json.utf8))
+        XCTAssertEqual(token?.value, "tok")
+        XCTAssertEqual(token?.expiresAt, Date(timeIntervalSince1970: 1_791_000_000))
+        XCTAssertEqual(token?.isExpired(at: Date(timeIntervalSince1970: 1_790_999_999)), false)
+        XCTAssertEqual(token?.isExpired(at: Date(timeIntervalSince1970: 1_791_000_000)), true)
+
+        let noExpiry = ClaudeService.parseClaudeCodeCredentials(Data(#"{"claudeAiOauth":{"accessToken":"tok"}}"#.utf8))
+        XCTAssertNil(noExpiry?.expiresAt)
+        XCTAssertEqual(noExpiry?.isExpired(), false)
+
+        XCTAssertNil(ClaudeService.parseClaudeCodeCredentials(Data(#"{"claudeAiOauth":{"accessToken":""}}"#.utf8)))
+        XCTAssertNil(ClaudeService.parseClaudeCodeCredentials(Data("not json".utf8)))
+    }
+
     func testParseDateFormats() {
         let expected = Date(timeIntervalSince1970: 1_791_000_000)
         XCTAssertEqual(ClaudeService.parseDate("2026-10-03T04:00:00Z"), expected)
