@@ -624,16 +624,16 @@ public struct QuotaTile: View {
             }
 
             if let resetText = resetText {
-                HStack(alignment: .top, spacing: 3) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .padding(.top, 1.5)
-                    Text(resetText)
-                        .font(.system(size: 10))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                // One line in every layout: in a three-up row "Resets in 1d 18h" doesn't fit, so drop
+                // the prefix (the clock already says it) and only wrap if even that is too wide
+                ViewThatFits(in: .horizontal) {
+                    resetLabel(resetText).fixedSize()
+                    resetLabel(Self.compactResetText(resetText)).fixedSize()
+                    resetLabel(resetText)
                 }
                 .foregroundColor(LiquidGlassText.tertiary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(resetText)
                 .help(resetDate.map { "Resets \(DateParsing.exact($0))" } ?? "")
             }
         }
@@ -651,6 +651,24 @@ public struct QuotaTile: View {
         )
         .animation(LiquidGlassTokens.hoverSpring, value: isHovered)
         .onHover { isHovered = $0 }
+    }
+
+    private func resetLabel(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 3) {
+            Image(systemName: "clock")
+                .font(.system(size: 8.5, weight: .semibold))
+                .padding(.top, 1.5)
+            Text(text)
+                .font(.system(size: 10))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// "Resets in 1d 18h" → "1d 18h"; other wording ("Resets soon", "Refreshed") is kept as is.
+    static func compactResetText(_ text: String) -> String {
+        let prefix = "Resets in "
+        return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : text
     }
 }
 

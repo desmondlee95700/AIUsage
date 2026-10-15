@@ -55,6 +55,13 @@ public enum TokenActivityRange: Int, CaseIterable, Identifiable {
 public struct TokenActivitySummary: Equatable {
     /// Oldest first, one entry per day (zero-filled), ending today
     public let days: [DailyTokenActivity]
+    /// Yesterday's usage up to the same time of day as now, so a partly-used today is compared fairly
+    public let yesterdaySoFar: TokenUsage
+
+    public init(days: [DailyTokenActivity], yesterdaySoFar: TokenUsage = TokenUsage()) {
+        self.days = days
+        self.yesterdaySoFar = yesterdaySoFar
+    }
 
     public var today: TokenUsage { days.last?.usage ?? TokenUsage() }
     public var periodTotal: TokenUsage { days.reduce(TokenUsage()) { $0 + $1.usage } }
@@ -63,7 +70,21 @@ public struct TokenActivitySummary: Equatable {
 
     /// The most recent `count` days (ending today)
     public func lastDays(_ count: Int) -> TokenActivitySummary {
-        TokenActivitySummary(days: Array(days.suffix(count)))
+        TokenActivitySummary(days: Array(days.suffix(count)), yesterdaySoFar: yesterdaySoFar)
+    }
+
+    /// Today's tokens against yesterday at the same time, e.g. "↓45% vs yesterday" or "↑2.3× vs yesterday".
+    /// Nil when yesterday had nothing by now, since any percentage would be meaningless.
+    public var todayVsYesterday: String? {
+        let current = today.total
+        let baseline = yesterdaySoFar.total
+        guard baseline > 0 else { return nil }
+        let ratio = Double(current) / Double(baseline)
+        if abs(ratio - 1) < 0.01 { return "Same as yesterday" }
+        // Big jumps read better as a multiple than as "+640%"
+        if ratio >= 2 { return String(format: "↑%.1f× vs yesterday", ratio) }
+        let percent = Int((abs(ratio - 1) * 100).rounded())
+        return "\(ratio > 1 ? "↑" : "↓")\(percent)% vs yesterday"
     }
     
     /// Buckets per-request usage into local days, zero-filling the last `dayCount` days.
@@ -74,15 +95,21 @@ public struct TokenActivitySummary: Equatable {
         calendar: Calendar = .current
     ) -> TokenActivitySummary {
         let today = calendar.startOfDay(for: now)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let sameTimeYesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
         var buckets: [Date: TokenUsage] = [:]
+        var yesterdaySoFar = TokenUsage()
         for entry in entries {
             buckets[calendar.startOfDay(for: entry.timestamp), default: TokenUsage()] += entry.usage
+            if entry.timestamp >= yesterday && entry.timestamp <= sameTimeYesterday {
+                yesterdaySoFar += entry.usage
+            }
         }
         let days = (0..<dayCount).reversed().compactMap { offset -> DailyTokenActivity? in
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             return DailyTokenActivity(day: day, usage: buckets[day] ?? TokenUsage())
         }
-        return TokenActivitySummary(days: days)
+        return TokenActivitySummary(days: days, yesterdaySoFar: yesterdaySoFar)
     }
 
     public static func formatTokens(_ tokens: Int) -> String {

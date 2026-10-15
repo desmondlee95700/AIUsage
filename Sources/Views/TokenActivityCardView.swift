@@ -130,8 +130,12 @@ public struct TokenActivityCardView: View {
         let primaryTitle = detail.map { Self.dayFormatter.string(from: $0.day) } ?? "Today"
         let primary = detail?.usage ?? activity.today
 
+        // Today leads with how it compares to yesterday; a hovered day keeps its cache figure
+        let comparison = detail == nil ? activity.todayVsYesterday : nil
+
         return HStack(alignment: .top, spacing: 8) {
-            stat(title: primaryTitle, value: primary.total, caption: cacheCaption(primary.cacheRead), isFocused: detail != nil)
+            stat(title: primaryTitle, value: primary.total, caption: comparison ?? cacheCaption(primary.cacheRead), isFocused: detail != nil)
+                .help(comparison == nil ? "" : "Yesterday by this time: \(TokenActivitySummary.formatTokens(activity.yesterdaySoFar.total)) tokens")
             stat(title: "\(activity.days.count)-Day Total", value: activity.periodTotal.total, caption: cacheCaption(activity.periodTotal.cacheRead))
             stat(
                 title: "Output",
@@ -162,6 +166,7 @@ public struct TokenActivityCardView: View {
                 .font(.system(size: 9.5))
                 .foregroundColor(LiquidGlassText.tertiary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)  // "↓62% vs yesterday" is a touch wider than the tile
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 9)

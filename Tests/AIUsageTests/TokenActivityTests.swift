@@ -71,6 +71,43 @@ final class TokenActivityTests: XCTestCase {
         XCTAssertEqual(summary.lastDays(TokenActivityRange.month.rawValue).periodTotal.total, 105)
     }
     
+    func testYesterdaySoFarStopsAtTheSameTimeOfDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Singapore")!
+        let now = TokenActivityService.parseTimestamp("2026-10-10T04:00:00Z")! // 12:00 local
+        let entries: [(timestamp: Date, usage: TokenUsage)] = [
+            (TokenActivityService.parseTimestamp("2026-10-09T01:00:00Z")!, TokenUsage(output: 100)), // yesterday 09:00
+            (TokenActivityService.parseTimestamp("2026-10-09T08:00:00Z")!, TokenUsage(output: 900)), // yesterday 16:00, later than now
+            (TokenActivityService.parseTimestamp("2026-10-08T15:00:00Z")!, TokenUsage(output: 50)),  // 23:00 the day before
+            (TokenActivityService.parseTimestamp("2026-10-10T02:00:00Z")!, TokenUsage(output: 150)), // today 10:00
+        ]
+        let summary = TokenActivitySummary.build(from: entries, dayCount: 7, now: now, calendar: calendar)
+        XCTAssertEqual(summary.yesterdaySoFar.total, 100)
+        XCTAssertEqual(summary.todayVsYesterday, "↑50% vs yesterday")
+        XCTAssertEqual(summary.lastDays(3).yesterdaySoFar, summary.yesterdaySoFar, "the range picker keeps the comparison")
+    }
+
+    func testTodayVsYesterdayWording() {
+        func text(today: Int, yesterday: Int) -> String? {
+            TokenActivitySummary(
+                days: [DailyTokenActivity(day: Date(), usage: TokenUsage(output: today))],
+                yesterdaySoFar: TokenUsage(output: yesterday)
+            ).todayVsYesterday
+        }
+        XCTAssertNil(text(today: 500, yesterday: 0), "nothing to compare against")
+        XCTAssertEqual(text(today: 1_000, yesterday: 1_004), "Same as yesterday")
+        XCTAssertEqual(text(today: 380, yesterday: 1_000), "↓62% vs yesterday")
+        XCTAssertEqual(text(today: 0, yesterday: 1_000), "↓100% vs yesterday")
+        XCTAssertEqual(text(today: 1_990, yesterday: 1_000), "↑99% vs yesterday")
+        XCTAssertEqual(text(today: 2_300, yesterday: 1_000), "↑2.3× vs yesterday")
+    }
+
+    func testCompactResetTextDropsOnlyTheResetsInPrefix() {
+        XCTAssertEqual(QuotaTile.compactResetText("Resets in 1d 18h"), "1d 18h")
+        XCTAssertEqual(QuotaTile.compactResetText("Resets soon"), "Resets soon")
+        XCTAssertEqual(QuotaTile.compactResetText("Refreshed"), "Refreshed")
+    }
+
     func testFormatTokens() {
         XCTAssertEqual(TokenActivitySummary.formatTokens(950), "950")
         XCTAssertEqual(TokenActivitySummary.formatTokens(144_583), "144.6K")
