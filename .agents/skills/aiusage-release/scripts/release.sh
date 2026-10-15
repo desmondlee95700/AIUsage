@@ -5,6 +5,7 @@ set -e
 # AIUsage Release Automation Script
 # ==============================================================================
 # Cuts an AIUsage release:
+# 0. Requires main/master and pulls the latest commits from origin
 # 1. Runs the test suite
 # 2. Bumps version & build number in AppVersion.swift & scripts/build_app.sh
 # 3. Commits, creates an annotated vX.Y.Z tag, and pushes both to origin
@@ -36,6 +37,7 @@ Usage: ./scripts/release.sh [OPTIONS] [VERSION]
 
 Bumps the AIUsage version, tags it, and pushes. GitHub Actions then builds the
 DMGs and publishes the GitHub Release (see .github/workflows/release.yml).
+Must be run on 'main' or 'master'; the branch is fast-forwarded to origin first.
 
 Arguments:
   VERSION                Target version string (e.g. 2.1.1, v2.1.1)
@@ -126,9 +128,54 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Releases are cut only from main/master, synced with origin, so the version bump
+# lands on top of the latest remote commit
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "master" ]]; then
+    echo "❌ Releases must be cut from 'main' or 'master', but the current branch is '${CURRENT_BRANCH}'."
+    echo "   Run 'git checkout main' and try again."
+    exit 1
+fi
+
+echo "🔄 Fetching origin/${CURRENT_BRANCH}..."
+if ! git fetch --tags origin "$CURRENT_BRANCH"; then
+    echo "❌ Failed to fetch origin/${CURRENT_BRANCH}. Check your network connection and try again."
+    exit 1
+fi
+
+REMOTE_REF="origin/${CURRENT_BRANCH}"
+LOCAL_SHA=$(git rev-parse HEAD)
+REMOTE_SHA=$(git rev-parse "$REMOTE_REF")
+BASE_SHA=$(git merge-base HEAD "$REMOTE_REF")
+# Where the current version is read from; a dry-run that is behind reads the remote copy
+VERSION_REF="HEAD"
+
+if [[ "$LOCAL_SHA" == "$REMOTE_SHA" ]]; then
+    echo "✅ '${CURRENT_BRANCH}' is up to date with ${REMOTE_REF}."
+elif [[ "$LOCAL_SHA" == "$BASE_SHA" ]]; then
+    BEHIND_COUNT=$(git rev-list --count "HEAD..${REMOTE_REF}")
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "⬇️ '${CURRENT_BRANCH}' is ${BEHIND_COUNT} commit(s) behind ${REMOTE_REF}; a real run pulls them first."
+        VERSION_REF="$REMOTE_REF"
+    else
+        echo "⬇️ '${CURRENT_BRANCH}' is ${BEHIND_COUNT} commit(s) behind ${REMOTE_REF}; pulling..."
+        if ! git pull --ff-only origin "$CURRENT_BRANCH"; then
+            echo "❌ Failed to fast-forward '${CURRENT_BRANCH}'. Commit or stash local changes and try again."
+            exit 1
+        fi
+    fi
+elif [[ "$REMOTE_SHA" == "$BASE_SHA" ]]; then
+    AHEAD_COUNT=$(git rev-list --count "${REMOTE_REF}..HEAD")
+    echo "⚠️ '${CURRENT_BRANCH}' has ${AHEAD_COUNT} unpushed commit(s); they will be pushed with the release."
+else
+    echo "❌ '${CURRENT_BRANCH}' has diverged from ${REMOTE_REF}. Reconcile it (e.g. 'git pull --rebase') and try again."
+    exit 1
+fi
+
 # Read current version and build number from build_app.sh
-CURRENT_VERSION=$(grep '^APP_VERSION=' scripts/build_app.sh | head -n 1 | cut -d'"' -f2)
-CURRENT_BUILD=$(grep '^APP_BUILD=' scripts/build_app.sh | head -n 1 | cut -d'"' -f2)
+BUILD_SCRIPT=$(git show "${VERSION_REF}:scripts/build_app.sh")
+CURRENT_VERSION=$(grep '^APP_VERSION=' <<< "$BUILD_SCRIPT" | head -n 1 | cut -d'"' -f2)
+CURRENT_BUILD=$(grep '^APP_BUILD=' <<< "$BUILD_SCRIPT" | head -n 1 | cut -d'"' -f2)
 
 if [[ -z "$CURRENT_VERSION" || -z "$CURRENT_BUILD" ]]; then
     echo "❌ Failed to read current version or build number from scripts/build_app.sh"
@@ -193,20 +240,6 @@ if [[ -z "$RELEASE_TITLE" ]]; then
 fi
 
 echo "🎯 Target AIUsage Version:  ${TAG_NAME} (build ${NEW_BUILD})"
-
-# Verify git repository state
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$CURRENT_BRANCH" != "main" ]]; then
-    echo "⚠️ Warning: Currently on branch '${CURRENT_BRANCH}', not 'main'."
-    if [[ "$DRY_RUN" == false && "$AUTO_CONFIRM" == false ]]; then
-        read -p "Do you want to proceed on '${CURRENT_BRANCH}'? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Release aborted."
-            exit 1
-        fi
-    fi
-fi
 
 # Check tag collision
 if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
