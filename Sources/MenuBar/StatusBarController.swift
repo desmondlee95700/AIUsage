@@ -31,6 +31,11 @@ public class StatusBarController {
             }
         }
         
+        // Blackout starts from the popover too; close it so it isn't left open behind the overlay
+        BlackoutController.shared.willStart = { [weak self] in
+            self?.hidePopover(nil)
+        }
+        
         // Initial refresh
         service.refresh()
         
@@ -383,6 +388,12 @@ public class StatusBarController {
         refreshItem.target = self
         menu.addItem(refreshItem)
         
+        let blackoutItem = NSMenuItem(title: "Blackout", action: #selector(blackoutAction), keyEquivalent: "b")
+        blackoutItem.image = NSImage(systemSymbolName: "moon.fill", accessibilityDescription: "Blackout")
+        blackoutItem.toolTip = "Turn the screen black while an agent keeps working. Any key or mouse move wakes it."
+        blackoutItem.target = self
+        menu.addItem(blackoutItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Data: how often numbers refresh and when you're told they're low
@@ -539,6 +550,13 @@ public class StatusBarController {
     @objc private func toggleHideEmailsAction() {
         let defaults = UserDefaults.standard
         defaults.set(!defaults.bool(forKey: EmailMasking.defaultsKey), forKey: EmailMasking.defaultsKey)
+    }
+    
+    @objc private func blackoutAction() {
+        // Let the menu finish closing before the overlay takes focus
+        DispatchQueue.main.async {
+            BlackoutController.shared.start()
+        }
     }
     
     @objc private func refreshAction() {

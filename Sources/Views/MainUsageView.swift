@@ -307,6 +307,13 @@ public struct MainUsageView: View {
                 }
                 
                 GlassIconButton(
+                    systemImage: "moon.fill",
+                    help: "Blackout: turn the screen black while an agent keeps working. Any key or mouse move wakes it."
+                ) {
+                    BlackoutController.shared.start()
+                }
+                
+                GlassIconButton(
                     systemImage: "arrow.clockwise",
                     isActive: service.isLoading,
                     rotation: spinAngle,
