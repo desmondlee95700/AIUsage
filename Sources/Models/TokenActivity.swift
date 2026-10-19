@@ -81,9 +81,10 @@ public struct TokenActivitySummary: Equatable {
         guard baseline > 0 else { return nil }
         let ratio = Double(current) / Double(baseline)
         if abs(ratio - 1) < 0.01 { return "Same as yesterday" }
-        // Big jumps read better as a multiple than as "+640%"
-        if ratio >= 2 { return String(format: "↑%.1f× vs yesterday", ratio) }
         let percent = Int((abs(ratio - 1) * 100).rounded())
+        // Big jumps read better as a multiple than as "+640%"; switch as soon as the percentage
+        // would reach 100, so "↑100%" never shows next to "↑2.0×"
+        if ratio > 1 && percent >= 100 { return String(format: "↑%.1f× vs yesterday", ratio) }
         return "\(ratio > 1 ? "↑" : "↓")\(percent)% vs yesterday"
     }
     

@@ -10,8 +10,7 @@ public enum BlackoutWake {
     /// `secondsSinceInput` is the time since the last hardware event; `elapsed` is the time
     /// since Blackout started.
     public static func shouldWake(secondsSinceInput: TimeInterval, elapsed: TimeInterval, grace: TimeInterval = grace) -> Bool {
-        guard elapsed > grace else { return false }
-        return secondsSinceInput < elapsed - grace
+        !isInGrace(elapsed: elapsed, grace: grace) && secondsSinceInput < elapsed - grace
     }
 
     /// True while events should be swallowed without waking.

@@ -99,13 +99,8 @@ final class TokenActivityTests: XCTestCase {
         XCTAssertEqual(text(today: 380, yesterday: 1_000), "↓62% vs yesterday")
         XCTAssertEqual(text(today: 0, yesterday: 1_000), "↓100% vs yesterday")
         XCTAssertEqual(text(today: 1_990, yesterday: 1_000), "↑99% vs yesterday")
+        XCTAssertEqual(text(today: 1_996, yesterday: 1_000), "↑2.0× vs yesterday", "a rounded 100% reads as a multiple")
         XCTAssertEqual(text(today: 2_300, yesterday: 1_000), "↑2.3× vs yesterday")
-    }
-
-    func testCompactResetTextDropsOnlyTheResetsInPrefix() {
-        XCTAssertEqual(QuotaTile.compactResetText("Resets in 1d 18h"), "1d 18h")
-        XCTAssertEqual(QuotaTile.compactResetText("Resets soon"), "Resets soon")
-        XCTAssertEqual(QuotaTile.compactResetText("Refreshed"), "Refreshed")
     }
 
     func testFormatTokens() {

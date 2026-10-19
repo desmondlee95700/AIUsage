@@ -30,11 +30,9 @@ public final class BlackoutController {
     private var sleepAssertion: IOPMAssertionID = 0
     private var displaySleepWork: DispatchWorkItem?
 
-    /// Hardware events that count as the user coming back
-    private static let wakeEventTypes: [CGEventType] = [
-        .keyDown, .flagsChanged, .mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown,
-        .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel
-    ]
+    /// kCGAnyInputEventType: every hardware event in one query. It also counts key and button
+    /// releases, which is fine since the grace period absorbs the release of the starting click.
+    private static let anyInputEventType = CGEventType(rawValue: ~0)!
 
     private init() {}
 
@@ -94,13 +92,10 @@ public final class BlackoutController {
     private func showWindows() {
         windows = NSScreen.screens.map(makeWindow(for:))
 
-        activateApp()
         for window in windows {
             window.orderFrontRegardless()
         }
-        // Key focus goes to the overlay under the mouse, where a click would land
-        let mouse = NSEvent.mouseLocation
-        (windows.first { $0.frame.contains(mouse) } ?? windows.first)?.makeKey()
+        focusOverlay()
         NSCursor.setHiddenUntilMouseMoves(true)
 
         if reduceMotion {
@@ -115,7 +110,10 @@ public final class BlackoutController {
     }
 
     private func makeWindow(for screen: NSScreen) -> NSWindow {
-        let window = BlackoutWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        // Non-activating, so the overlay takes key focus even when macOS 14's cooperative
+        // activation refuses to bring this accessory app forward
+        let window = BlackoutWindow(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        window.becomesKeyOnlyIfNeeded = false
         window.setFrame(screen.frame, display: false)
         window.backgroundColor = .black
         window.isOpaque = true
@@ -147,21 +145,24 @@ public final class BlackoutController {
         })
     }
 
-    private func activateApp() {
+    /// Gives key focus to the overlay under the mouse, where a click would land, so the waking
+    /// key press lands on it instead of the app behind. Activation is best effort (macOS 14 may
+    /// refuse it); the non-activating panel becomes key either way.
+    private func focusOverlay() {
         if #available(macOS 14.0, *) {
             NSApp.activate()
         } else {
             NSApp.activate(ignoringOtherApps: true)
         }
+        let mouse = NSEvent.mouseLocation
+        (windows.first { $0.frame.contains(mouse) } ?? windows.first)?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Waking
 
     private func checkForInput() {
         guard isActive else { return }
-        let secondsSinceInput = Self.wakeEventTypes
-            .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
-            .min() ?? .infinity
+        let secondsSinceInput = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: Self.anyInputEventType)
         if BlackoutWake.shouldWake(secondsSinceInput: secondsSinceInput, elapsed: Date().timeIntervalSince(startedAt)) {
             stop()
         }
@@ -198,14 +199,16 @@ public final class BlackoutController {
             Task { @MainActor in self?.rebuildWindows() }
         }))
 
-        // Another app took focus: take it back so keys still reach the overlay
-        observers.append((center, center.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
+        // Another app took focus: take it back so keys still reach the overlay. Watches every
+        // activation, since this app may never have been active to resign
+        observers.append((workspace, workspace.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
             Task { @MainActor in
                 guard let self, self.isActive else { return }
-                self.activateApp()
-                self.windows.first?.makeKey()
+                self.focusOverlay()
             }
         }))
 
@@ -225,7 +228,7 @@ public final class BlackoutController {
             window.alphaValue = 1
             window.orderFrontRegardless()
         }
-        windows.first?.makeKey()
+        focusOverlay()
     }
 
     // MARK: - Power
@@ -249,7 +252,17 @@ public final class BlackoutController {
         let pmset = Process()
         pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
         pmset.arguments = ["displaysleepnow"]
-        try? pmset.run()
+        pmset.terminationHandler = { process in
+            if process.terminationStatus != 0 {
+                NSLog("AIUsage: pmset displaysleepnow exited with status %d", process.terminationStatus)
+            }
+        }
+        do {
+            try pmset.run()
+        } catch {
+            // NSLog rather than print: a menu bar app's stdout goes nowhere, but this shows in Console
+            NSLog("AIUsage: couldn't sleep the display: %@", error.localizedDescription)
+        }
     }
 
     private func releaseSleepAssertion() {
@@ -260,7 +273,7 @@ public final class BlackoutController {
 }
 
 /// Borderless windows can't become key by default; the overlay needs to, to receive the waking keys.
-private final class BlackoutWindow: NSWindow {
+private final class BlackoutWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }
