@@ -30,9 +30,17 @@ public final class BlackoutController {
     private var sleepAssertion: IOPMAssertionID = 0
     private var displaySleepWork: DispatchWorkItem?
 
-    /// kCGAnyInputEventType: every hardware event in one query. It also counts key and button
-    /// releases, which is fine since the grace period absorbs the release of the starting click.
-    private static let anyInputEventType = CGEventType(rawValue: ~0)!
+    /// Hardware events that wake. Queried one by one rather than via kCGAnyInputEventType, which
+    /// also counts key and button releases: releasing a held shortcut key or mouse button after the
+    /// grace period isn't new input (the local event monitor ignores releases for the same reason).
+    private static let wakeEventTypes: [CGEventType] = [
+        .keyDown, .flagsChanged, .mouseMoved, .scrollWheel,
+        .leftMouseDown, .rightMouseDown, .otherMouseDown,
+        .leftMouseDragged, .rightMouseDragged, .otherMouseDragged
+    ]
+
+    /// The app that was frontmost when Blackout started, so focus can go back to it on waking
+    private var previousApp: NSRunningApplication?
 
     private init() {}
 
@@ -41,6 +49,11 @@ public final class BlackoutController {
         isActive = true
         willStart?()
         startedAt = Date()
+
+        // This accessory app has no windows of its own, so after waking, keystrokes would go
+        // nowhere unless activation is handed back
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        previousApp = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
 
         holdOffSystemSleep()
         showWindows()
@@ -81,6 +94,7 @@ public final class BlackoutController {
         observers.removeAll()
         releaseSleepAssertion()
         hideWindows()
+        restorePreviousApp()
     }
 
     // MARK: - Overlay
@@ -158,11 +172,26 @@ public final class BlackoutController {
         (windows.first { $0.frame.contains(mouse) } ?? windows.first)?.makeKeyAndOrderFront(nil)
     }
 
+    /// Hands activation back to the app that was frontmost before Blackout, if it's still running.
+    private func restorePreviousApp() {
+        defer { previousApp = nil }
+        guard let app = previousApp, !app.isTerminated else { return }
+        if #available(macOS 14.0, *) {
+            // Cooperative activation: this app must yield before the other can be activated
+            NSApp.yieldActivation(to: app)
+            app.activate()
+        } else {
+            app.activate(options: [])
+        }
+    }
+
     // MARK: - Waking
 
     private func checkForInput() {
         guard isActive else { return }
-        let secondsSinceInput = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: Self.anyInputEventType)
+        let secondsSinceInput = Self.wakeEventTypes
+            .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
+            .min() ?? .infinity
         if BlackoutWake.shouldWake(secondsSinceInput: secondsSinceInput, elapsed: Date().timeIntervalSince(startedAt)) {
             stop()
         }
@@ -200,12 +229,17 @@ public final class BlackoutController {
         }))
 
         // Another app took focus: take it back so keys still reach the overlay. Watches every
-        // activation, since this app may never have been active to resign
+        // activation, since this app may never have been active to resign. The lock screen and
+        // screen saver are left alone, or reclaiming focus would fight the password field
         observers.append((workspace, workspace.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+            guard BlackoutWake.shouldReclaimFocus(
+                activatedPID: app?.processIdentifier,
+                ownPID: ProcessInfo.processInfo.processIdentifier,
+                bundleID: app?.bundleIdentifier
+            ) else { return }
             Task { @MainActor in
                 guard let self, self.isActive else { return }
                 self.focusOverlay()

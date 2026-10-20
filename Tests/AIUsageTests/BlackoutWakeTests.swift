@@ -22,4 +22,19 @@ final class BlackoutWakeTests: XCTestCase {
         XCTAssertTrue(BlackoutWake.shouldWake(secondsSinceInput: 8.9, elapsed: 10, grace: 1))
         XCTAssertTrue(BlackoutWake.shouldWake(secondsSinceInput: 0.1, elapsed: 1.2, grace: 1))
     }
+
+    func testReclaimsFocusFromOrdinaryApps() {
+        XCTAssertTrue(BlackoutWake.shouldReclaimFocus(activatedPID: 200, ownPID: 100, bundleID: "com.apple.Terminal"))
+        XCTAssertTrue(BlackoutWake.shouldReclaimFocus(activatedPID: 200, ownPID: 100, bundleID: nil))
+        XCTAssertTrue(BlackoutWake.shouldReclaimFocus(activatedPID: nil, ownPID: 100, bundleID: nil))
+    }
+
+    func testDoesNotReclaimFocusFromOwnActivation() {
+        XCTAssertFalse(BlackoutWake.shouldReclaimFocus(activatedPID: 100, ownPID: 100, bundleID: "com.example.AIUsage"))
+    }
+
+    func testDoesNotReclaimFocusFromLockScreenOrScreenSaver() {
+        XCTAssertFalse(BlackoutWake.shouldReclaimFocus(activatedPID: 200, ownPID: 100, bundleID: "com.apple.loginwindow"))
+        XCTAssertFalse(BlackoutWake.shouldReclaimFocus(activatedPID: 200, ownPID: 100, bundleID: "com.apple.ScreenSaver.Engine"))
+    }
 }

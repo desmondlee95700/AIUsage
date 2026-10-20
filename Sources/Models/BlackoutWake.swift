@@ -17,4 +17,19 @@ public enum BlackoutWake {
     public static func isInGrace(elapsed: TimeInterval, grace: TimeInterval = grace) -> Bool {
         elapsed <= grace
     }
+
+    /// Bundle IDs of the lock screen and screen saver, which take focus when the display wakes.
+    private static let systemOwnedBundleIDs: Set<String> = [
+        "com.apple.loginwindow",
+        "com.apple.ScreenSaver.Engine"
+    ]
+
+    /// True when another app's activation should be answered by re-focusing the overlay. Our own
+    /// activation is ignored, as is the lock screen or screen saver: fighting them for focus can
+    /// steal it from the password field.
+    public static func shouldReclaimFocus(activatedPID: pid_t?, ownPID: pid_t, bundleID: String?) -> Bool {
+        if activatedPID == ownPID { return false }
+        if let bundleID, systemOwnedBundleIDs.contains(bundleID) { return false }
+        return true
+    }
 }
