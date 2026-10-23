@@ -12,7 +12,7 @@ public enum AppVersion {
            !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return version
         }
-        return "2.6.5"
+        return "2.6.6"
     }
 
     /// Internal build version number (e.g. "12")
@@ -21,7 +21,7 @@ public enum AppVersion {
            !build.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return build
         }
-        return "26"
+        return "27"
     }
 
     /// Display string with version prefix (e.g. "v2.0.0")
