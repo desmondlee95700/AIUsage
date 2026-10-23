@@ -17,9 +17,10 @@ public struct ClaudeQuotaCardView: View {
     
     private let tint = LiquidGlassPalette.claude
     
+    private enum LimitTileKind { case fiveHour, weekly, model }
+    
     private struct LimitTile {
-        enum Kind { case fiveHour, weekly, model }
-        var kind: Kind = .model
+        var kind: LimitTileKind = .model
         let title: String
         let caption: String
         let remainingPercent: Int
@@ -137,7 +138,8 @@ public struct ClaudeQuotaCardView: View {
                         systemImage: "info.circle.fill",
                         color: LiquidGlassPalette.moderate,
                         title: "Dynamic Free Tier Limits",
-                        message: "Claude Free does not include fixed weekly quota limits. Capacity is dynamically allocated based on real-time server traffic. Upgrade to Claude Pro to unlock guaranteed 5-hour limits and weekly model tracking."
+                        message: "Claude Free does not include fixed weekly quota limits. Capacity is dynamically allocated based on real-time server traffic. "
+                            + "Upgrade to Claude Pro to unlock guaranteed 5-hour limits and weekly model tracking."
                     )
                 }
             }

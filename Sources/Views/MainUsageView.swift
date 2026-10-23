@@ -200,8 +200,7 @@ public struct MainUsageView: View {
             HStack(spacing: 8) {
                 if let icon = AppIconHelper.appIconImage {
                     Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .resizable().scaledToFit()
                         .frame(width: 22, height: 22)
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .overlay(
@@ -232,7 +231,7 @@ public struct MainUsageView: View {
                     .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
 
                     if let update = updateService.availableUpdate {
-                        Button(action: { updateService.promptUpdate(update) }) {
+                        Button { updateService.promptUpdate(update) } label: {
                             Text("New \(update.tagName)")
                                 .font(.system(size: 9.5, weight: .bold, design: .rounded))
                                 .foregroundColor(LiquidGlassText.primary)
@@ -275,9 +274,9 @@ public struct MainUsageView: View {
             
             // Update Button (when update is available)
             if let update = updateService.availableUpdate {
-                Button(action: {
+                Button {
                     updateService.promptUpdate(update)
-                }) {
+                } label: {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
@@ -593,11 +592,11 @@ public struct MainUsageView: View {
         let accentColor = LiquidGlassPalette.accent(for: provider)
         let fraction = remainingFraction(for: provider)
         
-        return Button(action: {
+        return Button {
             withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.interactiveSpring, reduceMotion: reduceMotion)) {
                 service.dualActiveProvider = provider
             }
-        }) {
+        } label: {
             HStack(spacing: 6) {
                 ZStack {
                     if let fraction = fraction {
@@ -606,8 +605,7 @@ public struct MainUsageView: View {
                     Group {
                         if let icon = icon {
                             Image(nsImage: icon)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
+                                .resizable().scaledToFit()
                                 .frame(width: 12, height: 12)
                                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                         } else {

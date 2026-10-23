@@ -3,6 +3,7 @@ import CommonCrypto
 import SQLite3
 import Security
 import LocalAuthentication
+import os
 
 /// An actor, so the pacing and last-good state below is only touched by one fetch at a time.
 /// QuotaService never overlaps refreshes, so fetches don't interleave across their awaits in practice.
@@ -69,8 +70,16 @@ public actor ClaudeService {
     // MARK: - Live Desktop Session Fetcher (Real Account & Real Quotas)
     
     private func fetchFromDesktopSession() async -> ClaudeState? {
-        guard let key = ClaudeKeyChainHelper.getSafeStorageKey(),
-              let sessionKey = ClaudeKeyChainHelper.getCookie(name: "sessionKey", key: key) else {
+        // Keychain and cookie database reads block (the Keychain may even prompt), so keep them
+        // off the cooperative pool
+        let cookies = await runBlocking { () -> (sessionKey: String, lastActiveOrg: String?)? in
+            guard let key = ClaudeKeyChainHelper.getSafeStorageKey(),
+                  let sessionKey = ClaudeKeyChainHelper.getCookie(name: "sessionKey", key: key) else {
+                return nil
+            }
+            return (sessionKey, ClaudeKeyChainHelper.getCookie(name: "lastActiveOrg", key: key))
+        }
+        guard let (sessionKey, lastOrgFromCookie) = cookies else {
             return nil
         }
         
@@ -79,8 +88,6 @@ public actor ClaudeService {
             return ClaudeState(account: account, limits: rememberLimits(nil), isConnected: true)
         }
         let requestStart = Date()
-        
-        let lastOrgFromCookie = ClaudeKeyChainHelper.getCookie(name: "lastActiveOrg", key: key)
         
         // 1. Fetch organization profile
         let orgsUrl = URL(string: "https://claude.ai/api/organizations")!
@@ -279,7 +286,8 @@ public actor ClaudeService {
     }
     
     private func requestUsage() async -> ClaudeUsageLimits? {
-        guard let token = ClaudeKeyChainHelper.getClaudeCodeOAuthToken() else { return nil }
+        // Runs /usr/bin/security, so keep it off the cooperative pool
+        guard let token = await runBlocking({ ClaudeKeyChainHelper.getClaudeCodeOAuthToken() }) else { return nil }
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
@@ -296,7 +304,7 @@ public actor ClaudeService {
     }
 
     /// Claude Code's OAuth access token and when it expires.
-    struct ClaudeCodeToken: Equatable {
+    struct ClaudeCodeToken: Equatable, Sendable {
         let value: String
         let expiresAt: Date?
 
@@ -328,15 +336,29 @@ public actor ClaudeService {
 
 // MARK: - Keychain and Chromium Cookies Extractor
 
-private struct ClaudeKeyChainHelper {
-    private static var cachedSafeStorageKey: [UInt8]?
-    private static var hasAttemptedSafeStorageKey = false
-    private static var cachedClaudeCodeToken: ClaudeService.ClaudeCodeToken?
+private enum ClaudeKeyChainHelper {
+    private struct Cache {
+        var safeStorageKey: [UInt8]?
+        var hasAttemptedSafeStorageKey = false
+        var claudeCodeToken: ClaudeService.ClaudeCodeToken?
+    }
+
+    /// Read on background threads (through runBlocking), so guarded by a lock
+    private static let cache = OSAllocatedUnfairLock(initialState: Cache())
 
     static func getSafeStorageKey() -> [UInt8]? {
-        if hasAttemptedSafeStorageKey {
-            return cachedSafeStorageKey
+        if let cached = cache.withLock({ $0.hasAttemptedSafeStorageKey ? .some($0.safeStorageKey) : nil }) {
+            return cached
         }
+        let key = readSafeStorageKey()
+        cache.withLock {
+            $0.safeStorageKey = key
+            $0.hasAttemptedSafeStorageKey = true
+        }
+        return key
+    }
+
+    private static func readSafeStorageKey() -> [UInt8]? {
         
         let context = LAContext()
         context.interactionNotAllowed = true
@@ -355,7 +377,6 @@ private struct ClaudeKeyChainHelper {
               let data = item as? Data,
               let pass = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !pass.isEmpty else {
-            hasAttemptedSafeStorageKey = true
             return nil
         }
         
@@ -369,31 +390,24 @@ private struct ClaudeKeyChainHelper {
             1003,
             &derivedKey, 16
         )
-        if cryptStatus == kCCSuccess {
-            cachedSafeStorageKey = derivedKey
-            hasAttemptedSafeStorageKey = true
-            return derivedKey
-        }
-        hasAttemptedSafeStorageKey = true
-        return nil
+        return cryptStatus == kCCSuccess ? derivedKey : nil
     }
     
     /// Reads the Claude Code OAuth access token (local only), cached in memory until it expires.
     static func getClaudeCodeOAuthToken() -> String? {
-        if let cached = cachedClaudeCodeToken, !cached.isExpired() {
+        if let cached = cache.withLock({ $0.claudeCodeToken }), !cached.isExpired() {
             return cached.value
         }
-        cachedClaudeCodeToken = nil
-        guard let data = readClaudeCodeCredentials(),
-              let token = ClaudeService.parseClaudeCodeCredentials(data),
-              !token.isExpired() else { return nil }
-        cachedClaudeCodeToken = token
-        return token.value
+        let token = readClaudeCodeCredentials()
+            .flatMap(ClaudeService.parseClaudeCodeCredentials)
+            .flatMap { $0.isExpired() ? nil : $0 }
+        cache.withLock { $0.claudeCodeToken = token }
+        return token?.value
     }
 
     /// Drops the cached token, e.g. after a 401 when Claude Code has already rotated it.
     static func invalidateClaudeCodeToken() {
-        cachedClaudeCodeToken = nil
+        cache.withLock { $0.claudeCodeToken = nil }
     }
 
     /// Reads the "Claude Code-credentials" item through /usr/bin/security instead of SecItemCopyMatching.
@@ -470,8 +484,6 @@ private struct ClaudeKeyChainHelper {
     }
     
     static func resetKeyCache() {
-        cachedSafeStorageKey = nil
-        hasAttemptedSafeStorageKey = false
-        cachedClaudeCodeToken = nil
+        cache.withLock { $0 = Cache() }
     }
 }

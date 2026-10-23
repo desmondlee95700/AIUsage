@@ -33,17 +33,7 @@ public struct QuotaAlertTracker {
         // Record current levels silently. If a tool already has low quota on launch, mark it as acknowledged
         // so an idle tool with stale low quota NEVER fires a notification out of the blue.
         if !hasInitializedBaselines {
-            lastKnownPercentages[key] = remainingPercent
-            var initialFired: Set<Int> = []
-            if remainingPercent <= 10 {
-                initialFired.insert(10)
-                initialFired.insert(30)
-            } else if remainingPercent <= 30 {
-                initialFired.insert(30)
-            }
-            if !initialFired.isEmpty {
-                alertedThresholds[key] = initialFired
-            }
+            recordBaseline(key: key, remainingPercent: remainingPercent)
             return nil
         }
 
@@ -84,5 +74,19 @@ public struct QuotaAlertTracker {
 
         alertedThresholds[key] = fired
         return crossed
+    }
+
+    private mutating func recordBaseline(key: String, remainingPercent: Int) {
+        lastKnownPercentages[key] = remainingPercent
+        var initialFired: Set<Int> = []
+        if remainingPercent <= 10 {
+            initialFired.insert(10)
+            initialFired.insert(30)
+        } else if remainingPercent <= 30 {
+            initialFired.insert(30)
+        }
+        if !initialFired.isEmpty {
+            alertedThresholds[key] = initialFired
+        }
     }
 }

@@ -12,7 +12,7 @@ final class TokenActivityTests: XCTestCase {
             #"{"type":"user","timestamp":"2026-10-10T08:00:00.000Z","message":{"content":"hi"}}"#,
             #"{"type":"assistant","requestId":"req_1","timestamp":"2026-10-10T08:00:01.000Z","message":{"id":"msg_1","usage":\#(usage)}}"#,
             #"{"type":"assistant","requestId":"req_1","timestamp":"2026-10-10T08:00:02.000Z","message":{"id":"msg_1","usage":\#(usage)}}"#,
-            "not json",
+            "not json"
         ])
         let entries = TokenActivityService.parseClaudeLog(log)
         XCTAssertEqual(entries.count, 2)
@@ -23,18 +23,19 @@ final class TokenActivityTests: XCTestCase {
     
     func testCodexLogSkipsRepeatedTurnsAndSplitsCachedInput() {
         func event(_ ts: String, running: Int, input: Int, cached: Int, output: Int) -> String {
-            #"{"timestamp":"\#(ts)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":\#(running)},"last_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"output_tokens":\#(output)}}}}"#
+            #"{"timestamp":"\#(ts)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":\#(running)},"#
+                + #""last_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"output_tokens":\#(output)}}}}"#
         }
         let log = data([
             #"{"timestamp":"2026-10-01T00:00:00Z","type":"event_msg","payload":{"type":"token_count","info":null}}"#,
             event("2026-10-01T00:00:01Z", running: 1100, input: 1000, cached: 600, output: 100),
             event("2026-10-01T00:00:02Z", running: 1100, input: 1000, cached: 600, output: 100),
-            event("2026-10-01T00:00:03Z", running: 2300, input: 1150, cached: 1000, output: 50),
+            event("2026-10-01T00:00:03Z", running: 2300, input: 1150, cached: 1000, output: 50)
         ])
         let entries = TokenActivityService.parseCodexLog(log)
         XCTAssertEqual(entries.map(\.usage), [
             TokenUsage(input: 400, cacheRead: 600, output: 100),
-            TokenUsage(input: 150, cacheRead: 1000, output: 50),
+            TokenUsage(input: 150, cacheRead: 1000, output: 50)
         ])
     }
     
@@ -46,7 +47,7 @@ final class TokenActivityTests: XCTestCase {
             // 2026-10-09 17:00 UTC is already 10 Oct locally
             (TokenActivityService.parseTimestamp("2026-10-09T17:00:00Z")!, TokenUsage(input: 5, output: 5)),
             (TokenActivityService.parseTimestamp("2026-10-10T01:00:00Z")!, TokenUsage(output: 10)),
-            (TokenActivityService.parseTimestamp("2026-10-08T01:00:00Z")!, TokenUsage(cacheRead: 99, output: 7)),
+            (TokenActivityService.parseTimestamp("2026-10-08T01:00:00Z")!, TokenUsage(cacheRead: 99, output: 7))
         ]
         let summary = TokenActivitySummary.build(from: entries, dayCount: 7, now: now, calendar: calendar)
         XCTAssertEqual(summary.days.count, 7)
@@ -79,7 +80,7 @@ final class TokenActivityTests: XCTestCase {
             (TokenActivityService.parseTimestamp("2026-10-09T01:00:00Z")!, TokenUsage(output: 100)), // yesterday 09:00
             (TokenActivityService.parseTimestamp("2026-10-09T08:00:00Z")!, TokenUsage(output: 900)), // yesterday 16:00, later than now
             (TokenActivityService.parseTimestamp("2026-10-08T15:00:00Z")!, TokenUsage(output: 50)),  // 23:00 the day before
-            (TokenActivityService.parseTimestamp("2026-10-10T02:00:00Z")!, TokenUsage(output: 150)), // today 10:00
+            (TokenActivityService.parseTimestamp("2026-10-10T02:00:00Z")!, TokenUsage(output: 150)) // today 10:00
         ]
         let summary = TokenActivitySummary.build(from: entries, dayCount: 7, now: now, calendar: calendar)
         XCTAssertEqual(summary.yesterdaySoFar.total, 100)

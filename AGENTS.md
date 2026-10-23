@@ -44,22 +44,19 @@ AIUsage/
 │   ├── liquid-glass-ui/        # macOS 27 Liquid Glass UI design skill
 │   └── aiusage-release/        # Automated release & DMG publishing skill
 ├── Sources/
-│   ├── main.swift              # AppKit lifecycle entry point & NSApplicationDelegate
-│   ├── MenuBar/                # Status item management & menu bar glyph rendering
-│   ├── Models/                 # Quota models, bucket structures, user tiers, low-quota alert thresholds
-│   ├── Services/               # Provider clients & discovery (Antigravity loopback RPC, Codex CLI, Claude usage), updates, notifications
-│   └── Views/                  # SwiftUI components:
-│       ├── MainUsageView.swift             # Root popover view & header chrome
-│       ├── QuotaCardView.swift             # Antigravity quota group cards & bucket progress rows
-│       ├── ChatGPTQuotaCardView.swift      # ChatGPT plan, rate-limit windows & reset credits
-│       ├── ClaudeQuotaCardView.swift       # Claude plan & 5-hour / weekly limits
-│       ├── TokenActivityCardView.swift     # 7/14/30-day token chart (Claude Code / Codex session logs, desktop + CLI)
-│       ├── ProviderFocusSubmenuView.swift  # Multi-select provider filter (popover & context menu)
-│       ├── CircularProgressView.swift      # Dynamic circular quota progress gauges
-│       ├── PlanCardView.swift              # User tier badge & subscription management
-│       ├── LiquidGlass.swift               # macOS 27 Liquid Glass design system helpers
-│       ├── LiquidGlassComponents.swift     # Shared glass components: gauges, meters, tiles, chips, buttons, empty states
-│       └── AppIconHelper.swift             # Dynamic app icon loader & cache
+│   ├── App/main.swift          # AppKit lifecycle entry point & NSApplicationDelegate
+│   ├── MenuBar/                # Status item, menu bar glyph rendering & its text/tooltip (QuotaService+MenuBar)
+│   ├── Providers/              # One folder per provider: discovery, client, wire models, popover card
+│   │   ├── Antigravity/        # Loopback Connect-RPC discovery, quota/tier models, QuotaCardView, PlanCardView
+│   │   ├── Codex/              # Codex CLI app-server client, rate-limit models, ChatGPTQuotaCardView
+│   │   └── Claude/             # claude.ai / OAuth usage client, account & limit models, ClaudeQuotaCardView
+│   ├── Features/Blackout/      # Screen blackout overlay and its wake logic
+│   ├── Services/               # Cross-provider state (QuotaService), token activity, updates, notifications, login item
+│   ├── Models/                 # Shared models: AIProvider, token activity, low-quota alert thresholds, app version
+│   ├── Settings/               # Preference enums and UserDefaults keys
+│   ├── DesignSystem/           # macOS 27 Liquid Glass tokens, modifiers, shared components, app icon loader
+│   ├── Shared/                 # Small utilities (runBlocking, date parsing)
+│   └── Views/                  # Popover screens: MainUsageView, TokenActivityCardView, ProviderFocusSubmenuView
 └── Tests/
     └── AIUsageTests/           # XCTest unit tests for pure logic (`swift test`)
 ```

@@ -155,7 +155,8 @@ public final class BlackoutController {
             context.duration = 0.25
             closing.forEach { $0.animator().alphaValue = 0 }
         }, completionHandler: {
-            closing.forEach { $0.orderOut(nil) }
+            // AppKit calls this on the main thread
+            MainActor.assumeIsolated { closing.forEach { $0.orderOut(nil) } }
         })
     }
 

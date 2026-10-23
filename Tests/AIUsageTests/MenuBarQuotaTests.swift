@@ -6,7 +6,8 @@ final class MenuBarQuotaTests: XCTestCase {
     func testCodexBothCapsAndWeeklyOnly() async throws {
         let service = QuotaService()
         service.isCodexConnected = true
-        service.codexRateLimits = try JSONDecoder().decode(CodexRateLimitsResponse.self, from: Data(#"{"rateLimits":{"primary":{"usedPercent":47,"windowDurationMins":300},"secondary":{"usedPercent":10,"windowDurationMins":10080}}}"#.utf8))
+        let limits = #"{"rateLimits":{"primary":{"usedPercent":47,"windowDurationMins":300},"secondary":{"usedPercent":10,"windowDurationMins":10080}}}"#
+        service.codexRateLimits = try JSONDecoder().decode(CodexRateLimitsResponse.self, from: Data(limits.utf8))
         XCTAssertEqual(service.menuBarQuotaLines(for: .chatgpt), ["53%", "90%"])
         service.codexRateLimits = try JSONDecoder().decode(CodexRateLimitsResponse.self, from: Data(#"{"rateLimits":{"primary":{"usedPercent":10,"windowDurationMins":10080}}}"#.utf8))
         XCTAssertEqual(service.menuBarQuotaLines(for: .chatgpt), ["90%"])
@@ -31,7 +32,8 @@ final class MenuBarQuotaTests: XCTestCase {
     func testAntigravityWeeklyOnlyDoesNotDuplicateCap() async throws {
         let service = QuotaService()
         service.isGeminiConnected = true
-        service.quotaSummary = try JSONDecoder().decode(QuotaSummaryData.self, from: Data(#"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"week","displayName":"Weekly","window":"WEEKLY","remainingFraction":0.9}]}]}"#.utf8))
+        let summary = #"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"week","displayName":"Weekly","window":"WEEKLY","remainingFraction":0.9}]}]}"#
+        service.quotaSummary = try JSONDecoder().decode(QuotaSummaryData.self, from: Data(summary.utf8))
         XCTAssertEqual(service.menuBarQuotaLines(for: .gemini), ["90%"])
         let bothCaps = #"{"groups":[{"displayName":"Gemini","buckets":["#
             + #"{"bucketId":"5h","displayName":"5-hour","window":"5h","remainingFraction":0.53},"#

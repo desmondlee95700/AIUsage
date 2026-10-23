@@ -27,38 +27,38 @@ public class QuotaService: ObservableObject {
     
     // General Status
     @Published public var isLoading: Bool = false
-    @Published public var lastUpdated: Date? = nil
+    @Published public var lastUpdated: Date?
     /// When each provider last returned data successfully. `lastUpdated` only says a refresh
     /// finished, which can be true while one provider failed or served cached numbers.
     @Published public private(set) var providerUpdatedAt: [AIProvider: Date] = [:]
     
     // Gemini / Antigravity State
     @Published public var isGeminiConnected: Bool = false
-    @Published public var quotaSummary: QuotaSummaryData? = nil
-    @Published public var userStatus: UserStatusData? = nil
-    @Published public var geminiErrorMessage: String? = nil
-    @Published public var discoveredServer: DiscoveredServer? = nil
+    @Published public var quotaSummary: QuotaSummaryData?
+    @Published public var userStatus: UserStatusData?
+    @Published public var geminiErrorMessage: String?
+    @Published public var discoveredServer: DiscoveredServer?
     
     // ChatGPT / Codex State
     @Published public var isCodexConnected: Bool = false
-    @Published public var codexRateLimits: CodexRateLimitsResponse? = nil
-    @Published public var codexAccount: CodexAccountInfo? = nil
-    @Published public var codexUsage: CodexUsageSummary? = nil
-    @Published public var codexErrorMessage: String? = nil
+    @Published public var codexRateLimits: CodexRateLimitsResponse?
+    @Published public var codexAccount: CodexAccountInfo?
+    @Published public var codexUsage: CodexUsageSummary?
+    @Published public var codexErrorMessage: String?
     
     // Claude / Anthropic State
     @Published public var isClaudeConnected: Bool = false
-    @Published public var claudeAccount: ClaudeAccountInfo? = nil
-    @Published public var claudeLimits: ClaudeUsageLimits? = nil
-    @Published public var claudeErrorMessage: String? = nil
+    @Published public var claudeAccount: ClaudeAccountInfo?
+    @Published public var claudeLimits: ClaudeUsageLimits?
+    @Published public var claudeErrorMessage: String?
     
     // Local token activity (Claude Code / Codex session logs, desktop app and CLI)
-    @Published public var claudeActivity: TokenActivitySummary? = nil
-    @Published public var codexActivity: TokenActivitySummary? = nil
+    @Published public var claudeActivity: TokenActivitySummary?
+    @Published public var codexActivity: TokenActivitySummary?
     
     // Codex Reset State
     @Published public var isConsumingReset: Bool = false
-    @Published public var resetActionMessage: String? = nil
+    @Published public var resetActionMessage: String?
     @Published public var resetActionIsSuccess: Bool = false
     
     // Low Quota Alert Tracking (tracks 30% and 10% thresholds per provider upon active quota drop)
@@ -68,7 +68,7 @@ public class QuotaService: ObservableObject {
     @Published public var selectedProviders: Set<AIProvider> {
         didSet {
             let stringArray = selectedProviders.map { $0.rawValue }
-            UserDefaults.standard.set(stringArray, forKey: "selectedProviders")
+            UserDefaults.standard.set(stringArray, forKey: AppSettings.selectedProvidersKey)
             if !selectedProviders.contains(.gemini) {
                 isGeminiConnected = false
                 discoveredServer = nil
@@ -80,7 +80,6 @@ public class QuotaService: ObservableObject {
                 isClaudeConnected = false
             }
             updateMenuBarCallback?()
-            onFocusModeChanged?()
         }
     }
     
@@ -180,13 +179,13 @@ public class QuotaService: ObservableObject {
     
     @Published public var refreshInterval: RefreshInterval {
         didSet {
-            UserDefaults.standard.set(refreshInterval.rawValue, forKey: "refreshInterval")
+            UserDefaults.standard.set(refreshInterval.rawValue, forKey: AppSettings.refreshIntervalKey)
             restartTimer()
         }
     }
     
+    /// Redraws the status item. Set once, by StatusBarController.
     public var updateMenuBarCallback: (() -> Void)?
-    public var onFocusModeChanged: (() -> Void)?
     
     private var timer: Timer?
     private let session: URLSession
@@ -195,40 +194,20 @@ public class QuotaService: ObservableObject {
     private var pendingRefreshForceDiscovery: Bool?
     
     public init() {
-        let geminiInst = ProcessDiscovery.isAntigravityInstalled
+        // Only the cheap check here: the full one spawns `ps`, and this runs on the main thread at
+        // launch. The first refresh, moments later, also picks up a running language server.
+        let geminiInst = ProcessDiscovery.isAntigravityAppInstalled
         let codexInst = CodexDiscovery.isCodexInstalled
         let claudeInst = ClaudeDiscovery.isClaudeInstalled
         self.isGeminiInstalled = geminiInst
         self.isCodexInstalled = codexInst
         self.isClaudeInstalled = claudeInst
     
-        // Multi-choice selected providers initialization
-        var initialSelected = Set<AIProvider>()
-        if let savedArray = UserDefaults.standard.stringArray(forKey: "selectedProviders"), !savedArray.isEmpty {
-            for raw in savedArray {
-                if let p = AIProvider(rawValue: raw) {
-                    if (p == .gemini && geminiInst) ||
-                       (p == .chatgpt && codexInst) ||
-                       (p == .claude && claudeInst) {
-                        initialSelected.insert(p)
-                    }
-                }
-            }
-        } else {
-            let savedFocus = UserDefaults.standard.string(forKey: "providerFocusMode")
-            if savedFocus == "gemini" && geminiInst {
-                initialSelected.insert(.gemini)
-            } else if savedFocus == "chatgpt" && codexInst {
-                initialSelected.insert(.chatgpt)
-            } else if savedFocus == "claude" && claudeInst {
-                initialSelected.insert(.claude)
-            }
-        }
-        if initialSelected.isEmpty {
-            if geminiInst { initialSelected.insert(.gemini) }
-            if codexInst { initialSelected.insert(.chatgpt) }
-            if claudeInst { initialSelected.insert(.claude) }
-        }
+        var installed = Set<AIProvider>()
+        if geminiInst { installed.insert(.gemini) }
+        if codexInst { installed.insert(.chatgpt) }
+        if claudeInst { installed.insert(.claude) }
+        let initialSelected = Self.savedSelection(installed: installed)
         self.selectedProviders = initialSelected
         
         // Sets are unordered; pick in canonical order so the popover opens consistently
@@ -241,8 +220,8 @@ public class QuotaService: ObservableObject {
             .flatMap(LowQuotaAlertMode.init(rawValue:)) ?? .all
         
         // 0 is a real value (.manual), so distinguish "never saved" from "saved as 0"
-        if UserDefaults.standard.object(forKey: "refreshInterval") != nil {
-            let savedInterval = UserDefaults.standard.integer(forKey: "refreshInterval")
+        if UserDefaults.standard.object(forKey: AppSettings.refreshIntervalKey) != nil {
+            let savedInterval = UserDefaults.standard.integer(forKey: AppSettings.refreshIntervalKey)
             self.refreshInterval = RefreshInterval(rawValue: savedInterval) ?? .oneMinute
         } else {
             self.refreshInterval = .oneMinute
@@ -251,6 +230,20 @@ public class QuotaService: ObservableObject {
         self.session = URLSession(configuration: .ephemeral, delegate: InsecureTrustDelegate.shared, delegateQueue: nil)
         
         restartTimer()
+    }
+    
+    /// The saved multi-provider selection, else the single focus saved by older versions, limited to
+    /// installed providers; every installed provider when neither applies.
+    private static func savedSelection(installed: Set<AIProvider>) -> Set<AIProvider> {
+        let defaults = UserDefaults.standard
+        var selected = Set<AIProvider>()
+        if let saved = defaults.stringArray(forKey: AppSettings.selectedProvidersKey), !saved.isEmpty {
+            selected = Set(saved.compactMap(AIProvider.init(rawValue:)))
+        } else if let focus = defaults.string(forKey: AppSettings.legacyProviderFocusModeKey).flatMap(AIProvider.init(rawValue:)) {
+            selected = [focus]
+        }
+        selected.formIntersection(installed)
+        return selected.isEmpty ? installed : selected
     }
     
     public func restartTimer() {
@@ -543,7 +536,8 @@ public class QuotaService: ObservableObject {
     // MARK: - Antigravity Connect-RPC
     
     /// POSTs an empty request to a LanguageServerService method on the local Antigravity server.
-    private func antigravityCall<T: Decodable>(_ method: String, server: DiscoveredServer) async throws -> T {
+    /// Nonisolated: only the URLSession call and decoding happen here, off the main actor.
+    private nonisolated func antigravityCall<T: Decodable & Sendable>(_ method: String, server: DiscoveredServer) async throws -> T {
         guard let url = URL(string: "https://127.0.0.1:\(server.port)/exa.language_server_pb.LanguageServerService/\(method)") else {
             throw URLError(.badURL)
         }
@@ -626,169 +620,5 @@ public class QuotaService: ObservableObject {
     
     public var claude5hPercentage: Int? {
         claudeLimits?.fiveHourPercent
-    }
-    
-    // MARK: - Menu Bar Formatter Helpers
-    
-    func menuBarQuotaLines(for provider: AIProvider, includeWindowLabels: Bool = false) -> [String] {
-        guard isProviderConnected(provider) else { return ["Off"] }
-        let short: Int?
-        let weekly: Int?
-        switch provider {
-        case .gemini:
-            short = primary5hBucket?.remainingFraction.map { Int(($0 * 100).rounded()) }
-            weekly = primaryWeeklyBucket?.remainingFraction.map { Int(($0 * 100).rounded()) }
-        case .chatgpt:
-            short = codex5hWindow?.windowDurationMins == 300 ? codex5hPercentage : nil
-            weekly = codexWeeklyPercentage
-        case .claude:
-            short = claude5hPercentage
-            weekly = claudeWeeklyPercentage
-        }
-        var lines: [String] = []
-        if let short { lines.append("\(short)%" + (includeWindowLabels ? " 5h" : "")) }
-        if let weekly { lines.append("\(weekly)%" + (includeWindowLabels ? " wk" : "")) }
-        return lines.isEmpty ? [badgeText(for: provider)] : lines
-    }
-
-    /// Remaining percentage the menu bar shows for a provider, or nil when disconnected or without data.
-    public func menuBarPercentage(for provider: AIProvider) -> Int? {
-        guard isProviderConnected(provider) else { return nil }
-        switch provider {
-        case .gemini: return geminiPercentage
-        case .chatgpt: return codexRemainingPercentage
-        case .claude: return claudePercentage
-        }
-    }
-    
-    /// The 5-hour and weekly bars drawn beside a provider's menu bar figure, or nil when the
-    /// provider is disconnected or doesn't report both windows.
-    public func menuBarMeter(for provider: AIProvider) -> MenuBarMeter? {
-        guard isProviderConnected(provider) else { return nil }
-        switch provider {
-        case .gemini:
-            // primary5hBucket falls back to any non-weekly bucket, so it is never the weekly one itself
-            return MenuBarMeter(fiveHour: primary5hBucket?.remainingFraction, weekly: primaryWeeklyBucket?.remainingFraction)
-        case .chatgpt:
-            return MenuBarMeter(fiveHour: codex5hWindow?.remainingFraction, weekly: codexWeeklyWindow?.remainingFraction)
-        case .claude:
-            return MenuBarMeter(fiveHour: claude5hPercentage.map { Double($0) / 100 }, weekly: claudeWeeklyPercentage.map { Double($0) / 100 })
-        }
-    }
-
-    /// Whether the menu bar figure for a provider comes from its weekly limit rather than the
-    /// 5-hour one, so the popover can say which limit the number belongs to.
-    public func isWeeklyBinding(for provider: AIProvider) -> Bool {
-        switch provider {
-        case .gemini:
-            guard let binding = quotaSummary?.bindingBucket, let weekly = primaryWeeklyBucket else { return false }
-            return binding.bucketId == weekly.bucketId && primary5hBucket?.bucketId != weekly.bucketId
-        case .chatgpt:
-            // Same 6–10 day range as CodexRateLimitSnapshot.weeklyWindow, so 30-day windows aren't called weekly
-            guard let mins = codexSnapshot?.bindingWindow?.windowDurationMins else { return false }
-            return (6 * 1440...10 * 1440).contains(mins)
-        case .claude:
-            return claudeLimits?.isWeeklyBinding ?? false
-        }
-    }
-    
-    /// When the numbers shown for a provider were fetched. Claude can serve its last good limits
-    /// through brief failures, so its age comes from the limits themselves.
-    public func dataAsOf(_ provider: AIProvider) -> Date? {
-        guard isProviderConnected(provider) else { return nil }
-        if provider == .claude, let fetched = claudeLimits?.lastUpdated {
-            return fetched
-        }
-        return providerUpdatedAt[provider]
-    }
-    
-    /// Short status for a provider as shown in the menu bar and provider tabs: "42%", "–" when
-    /// connected without quota data, "Off", or a tier badge.
-    public func badgeText(for provider: AIProvider) -> String {
-        switch provider {
-        case .gemini:
-            return isGeminiConnected ? (geminiPercentage.map { "\($0)%" } ?? "–") : "Off"
-        case .chatgpt:
-            return isCodexConnected ? (codexRemainingPercentage.map { "\($0)%" } ?? "–") : "Off"
-        case .claude:
-            guard isClaudeConnected else { return "Off" }
-            if let pct = claudePercentage {
-                return "\(pct)%"
-            }
-            return claudeAccount?.tierBadge ?? "–"
-        }
-    }
-    
-    public var menuBarTooltip: String {
-        var lines: [String] = ["AIUsage \(AppVersion.displayString) — AI Model Quota Tracker"]
-        
-        let providers = selectedInstalledProviders
-        
-        if providers.contains(.gemini) {
-            if isGeminiConnected {
-                let tier = userStatus?.userTier?.name ?? "Connected"
-                if menuBarMeter(for: .gemini) != nil, let short = primary5hBucket, let weekly = primaryWeeklyBucket {
-                    let shortReset = short.formattedResetCountdown ?? "Active"
-                    let weeklyReset = weekly.formattedResetCountdown ?? "Active"
-                    lines.append("• Antigravity (Google): 5h: \(short.percentage)% (\(shortReset)) · Weekly: \(weekly.percentage)% (\(weeklyReset)) (\(tier))")
-                } else if let bucket = quotaSummary?.bindingBucket {
-                    let reset = bucket.formattedResetCountdown ?? "Active"
-                    let windowDesc = isWeeklyBinding(for: .gemini) ? "Weekly" : "5h limit"
-                    lines.append("• Antigravity (Google): \(bucket.percentage)% (\(windowDesc)) remaining (\(tier)) · \(reset)")
-                } else {
-                    lines.append("• Antigravity (Google): No quota data (\(tier))")
-                }
-            } else {
-                lines.append("• Antigravity (Google): Not running (open Antigravity to see quotas)")
-            }
-        }
-        
-        if providers.contains(.chatgpt) {
-            if isCodexConnected {
-                let plan = codexAccount?.formattedPlan ?? "Connected"
-                if let short = codex5hWindow, let weekly = codexWeeklyWindow {
-                    let shortReset = short.formattedResetCountdown ?? "Active"
-                    let weeklyReset = weekly.formattedResetCountdown ?? "Active"
-                    lines.append("• ChatGPT (OpenAI): 5h: \(short.remainingPercent)% (\(shortReset)) · Weekly: \(weekly.remainingPercent)% (\(weeklyReset)) (\(plan))")
-                } else if let active = codexActiveWindow {
-                    let reset = active.formattedResetCountdown ?? "Active"
-                    let desc = active.windowDisplayName
-                    lines.append("• ChatGPT (OpenAI): \(active.remainingPercent)% (\(desc)) remaining (\(plan)) · \(reset)")
-                } else {
-                    lines.append("• ChatGPT (OpenAI): No rate limit data (\(plan))")
-                }
-            } else {
-                lines.append("• ChatGPT (OpenAI): Not connected (open ChatGPT and sign in)")
-            }
-        }
-        
-        if providers.contains(.claude) {
-            if isClaudeConnected {
-                let tier = claudeAccount?.formattedTier ?? "Connected"
-                if let limits = claudeLimits {
-                    var parts: [String] = []
-                    if let fiveH = claude5hPercentage {
-                        parts.append("5h: \(fiveH)% (\(limits.formattedFiveHourCountdown ?? "Full Quota"))")
-                    }
-                    if let weekly = claudeWeeklyPercentage {
-                        parts.append("Weekly: \(weekly)% (\(limits.formattedWeeklyCountdown ?? "Full Quota"))")
-                    }
-                    lines.append("• Claude (Anthropic): \(parts.joined(separator: " · ")) (\(tier))")
-                } else if claudeAccount?.canSeeUsageLimits == true {
-                    lines.append("• Claude (Anthropic): Usage unavailable (\(tier))")
-                } else {
-                    lines.append("• Claude (Anthropic): Dynamic Free Tier (\(tier))")
-                }
-            } else {
-                lines.append("• Claude (Anthropic): Signed out (open Claude and sign in)")
-            }
-        }
-        
-        if providers.isEmpty {
-            lines.append("• No AI providers selected")
-        } else {
-            lines.append("The menu bar shows 5-hour limits on top and weekly limits below, with a progress bar beside each percentage. Click for details, right-click for actions.")
-        }
-        return lines.joined(separator: "\n")
     }
 }

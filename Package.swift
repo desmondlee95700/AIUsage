@@ -12,7 +12,9 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AIUsage",
-            path: "Sources"
+            path: "Sources",
+            // Full data-race checking; CI builds with warnings as errors, so new races fail the build
+            swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
         .testTarget(
             name: "AIUsageTests",

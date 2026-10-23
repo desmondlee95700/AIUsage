@@ -6,6 +6,7 @@
 import Cocoa
 import SwiftUI
 
+@MainActor
 public enum AppIconHelper {
     private static func loadAsset(named name: String, ofType ext: String) -> NSImage? {
         // Try Bundle resources

@@ -65,4 +65,41 @@ final class UpdateDownloadTests: XCTestCase {
         )
         XCTAssertNotNil(failure)
     }
+
+    func testRejectsChecksumMismatch() throws {
+        let temp = try makeTemp(bytes: 64)
+        let dest = dir.appendingPathComponent("AIUsage-v9.9.9.dmg")
+
+        let failure = UpdateService.saveDownload(
+            tempURL: temp, response: response(200), error: nil, expectedSize: 64,
+            expectedSHA256: String(repeating: "0", count: 64), to: dest
+        )
+
+        XCTAssertNotNil(failure)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path))
+    }
+
+    func testAcceptsMatchingChecksum() throws {
+        let temp = try makeTemp(bytes: 64)
+        let dest = dir.appendingPathComponent("AIUsage-v9.9.9.dmg")
+        // SHA-256 of 64 zero bytes
+        let digest = "F5A5FD42D16A20302798EF6ED309979B43003D2320D9F0E8EA9831A92759FB4B"
+
+        let failure = UpdateService.saveDownload(
+            tempURL: temp, response: response(200), error: nil, expectedSize: 64,
+            expectedSHA256: digest, to: dest
+        )
+
+        XCTAssertNil(failure)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dest.path))
+    }
+
+    func testReadsDigestFromShasumOutput() {
+        let hex = String(repeating: "ab", count: 32)
+        let sums = Data("\(String(repeating: "cd", count: 32))  AIUsage-v9.9.9.dmg\n\(hex) *AIUsage.dmg\n".utf8)
+
+        XCTAssertEqual(UpdateService.sha256(for: "AIUsage.dmg", inChecksums: sums), hex)
+        XCTAssertNil(UpdateService.sha256(for: "Other.dmg", inChecksums: sums))
+        XCTAssertNil(UpdateService.sha256(for: "AIUsage.dmg", inChecksums: Data("nothex  AIUsage.dmg".utf8)))
+    }
 }

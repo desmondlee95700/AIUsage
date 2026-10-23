@@ -823,8 +823,7 @@ public struct ProviderIconBadge: View {
 
             if let icon = icon {
                 Image(nsImage: icon)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .resizable().scaledToFit()
                     .frame(width: size * 0.66, height: size * 0.66)
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.15, style: .continuous))
             } else {
@@ -908,8 +907,7 @@ public struct GlassEmptyState<Actions: View>: View {
 
                 if let icon = icon {
                     Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .resizable().scaledToFit()
                         .frame(width: 40, height: 40)
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 } else {

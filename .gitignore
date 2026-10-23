@@ -14,3 +14,4 @@ Packages/
 *.app
 *.dmg
 .dmg_staging/
+SHA256SUMS

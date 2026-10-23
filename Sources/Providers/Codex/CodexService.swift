@@ -1,12 +1,13 @@
 import Foundation
 
-public struct CodexPayload {
+public struct CodexPayload: Sendable {
     public let rateLimits: CodexRateLimitsResponse?
     public let account: CodexAccountInfo?
     public let usage: CodexUsageSummary?
 }
 
-public final class CodexService {
+/// Stateless: every call spawns its own app-server process
+public final class CodexService: Sendable {
     public static let shared = CodexService()
 
     private struct RPCResponse<T: Codable>: Codable {
@@ -164,7 +165,7 @@ public final class CodexService {
 
     // MARK: - Consume Rate Limit Reset Credit
 
-    public enum ConsumeResetCreditOutcome: String {
+    public enum ConsumeResetCreditOutcome: String, Sendable {
         case reset = "reset"
         case nothingToReset = "nothing_to_reset"
         case noCredit = "no_credit"

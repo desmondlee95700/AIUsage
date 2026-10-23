@@ -19,16 +19,9 @@ public class StatusBarController {
         setupPopover()
         setupStatusButton()
         
+        // Both sides are on the main actor, so no dispatch hop is needed
         service.updateMenuBarCallback = { [weak self] in
-            DispatchQueue.main.async {
-                self?.updateStatusButton()
-            }
-        }
-        
-        service.onFocusModeChanged = { [weak self] in
-            DispatchQueue.main.async {
-                self?.updateStatusButton()
-            }
+            self?.updateStatusButton()
         }
         
         // Blackout starts from the popover too; close it so it isn't left open behind the overlay
@@ -67,7 +60,6 @@ public class StatusBarController {
                 .environmentObject(LiquidGlassObserver.shared)
         )
 
-
         // Make the hosting view itself fully transparent so the NSVisualEffectView
         // behind it can sample the real desktop wallpaper (same as Control Center).
         hosting.view.wantsLayer = true
@@ -105,7 +97,7 @@ public class StatusBarController {
             hosting.view.leadingAnchor.constraint(equalTo: wrapper.view.leadingAnchor),
             hosting.view.trailingAnchor.constraint(equalTo: wrapper.view.trailingAnchor),
             hosting.view.topAnchor.constraint(equalTo: wrapper.view.topAnchor),
-            hosting.view.bottomAnchor.constraint(equalTo: wrapper.view.bottomAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: wrapper.view.bottomAnchor)
         ])
 
         popover.contentViewController = wrapper

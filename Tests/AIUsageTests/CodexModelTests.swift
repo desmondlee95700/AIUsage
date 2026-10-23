@@ -112,9 +112,9 @@ final class CodexModelTests: XCTestCase {
         // Feed one byte at a time so multi-byte characters straddle reads
         for byte in stream {
             buffer.append(byte)
-            lines += CodexService.takeLines(from: &buffer).map { String(decoding: $0, as: UTF8.self) }
+            lines += CodexService.takeLines(from: &buffer).compactMap { String(bytes: $0, encoding: .utf8) }
         }
         XCTAssertEqual(lines, ["{\"email\":\"jösé@example.com\"}", "{\"id\":4}"])
-        XCTAssertEqual(String(decoding: buffer, as: UTF8.self), "partial")
+        XCTAssertEqual(String(bytes: buffer, encoding: .utf8), "partial")
     }
 }

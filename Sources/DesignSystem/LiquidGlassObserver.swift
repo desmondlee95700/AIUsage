@@ -18,6 +18,7 @@ import Combine
 ///   values approaching `1` = maximum Liquid Glass tinting.
 /// - `isEnabled`: Convenience bool — `true` when tintAmount > 0.05.
 /// - `intensity`: Same as tintAmount clamped to 0…1, ready to multiply opacities.
+@MainActor
 public final class LiquidGlassObserver: ObservableObject {
 
     /// Singleton — created once on app startup.
@@ -59,7 +60,8 @@ public final class LiquidGlassObserver: ObservableObject {
         // using change.newValue, which reports 0.0 when the key is missing and would override
         // the 0.5 system default. No `.initial`: init() already read the current value.
         observation = defaults.observe(\.NSGlassTintAmount, options: [.new]) { [weak self] _, _ in
-            self?.readCurrentValue()
+            // KVO can fire on any thread
+            Task { @MainActor in self?.readCurrentValue() }
         }
 
         // DidChangeNotification: catches cross-process writes from System Settings
@@ -69,14 +71,7 @@ public final class LiquidGlassObserver: ObservableObject {
             object: defaults,
             queue: .main
         ) { [weak self] _ in
-            self?.readCurrentValue()
-        }
-    }
-
-    deinit {
-        observation?.invalidate()
-        if let obs = notificationObserver {
-            NotificationCenter.default.removeObserver(obs)
+            MainActor.assumeIsolated { self?.readCurrentValue() }
         }
     }
 }
@@ -87,18 +82,5 @@ extension UserDefaults {
     /// Exposes `NSGlassTintAmount` as an `@objc dynamic` property for KVO.
     @objc dynamic var NSGlassTintAmount: Double {
         return double(forKey: "NSGlassTintAmount")
-    }
-}
-
-// MARK: - SwiftUI Environment Key
-
-private struct LiquidGlassObserverKey: EnvironmentKey {
-    static var defaultValue: LiquidGlassObserver { .shared }
-}
-
-public extension EnvironmentValues {
-    var liquidGlassObserver: LiquidGlassObserver {
-        get { self[LiquidGlassObserverKey.self] }
-        set { self[LiquidGlassObserverKey.self] = newValue }
     }
 }
