@@ -1,7 +1,8 @@
 import Foundation
 import AppKit
+import os
 
-public struct DiscoveredServer: Equatable {
+public struct DiscoveredServer: Equatable, Sendable {
     public let pid: Int
     public let csrfToken: String
     public let port: Int
@@ -24,12 +25,11 @@ public final class InsecureTrustDelegate: NSObject, URLSessionDelegate {
     }
 }
 
-public class ProcessDiscovery {
-    private static let cacheLock = NSLock()
-    private static var _cachedServer: DiscoveredServer?
+public enum ProcessDiscovery {
+    private static let serverCache = OSAllocatedUnfairLock<DiscoveredServer?>(initialState: nil)
     private static var cachedServer: DiscoveredServer? {
-        get { cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedServer }
-        set { cacheLock.lock(); _cachedServer = newValue; cacheLock.unlock() }
+        get { serverCache.withLock { $0 } }
+        set { serverCache.withLock { $0 = newValue } }
     }
     
     /// One session for all loopback probes. Sessions retain their delegate until
@@ -40,33 +40,34 @@ public class ProcessDiscovery {
         delegateQueue: nil
     )
     
+    /// Where Antigravity may be installed, in launch preference order
+    private static var appCandidatePaths: [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return [
+            "/Applications/Antigravity.app",
+            "/Applications/Antigravity IDE.app",
+            "\(home)/Applications/Antigravity.app",
+            "\(home)/Applications/Antigravity IDE.app"
+        ]
+    }
+    
+    private static let bundleIdentifiers = ["com.google.antigravity", "com.google.antigravity-ide"]
+    
     public static func invalidateCache() {
         cachedServer = nil
     }
     
+    /// Installed app bundle or data directory: file system and Launch Services lookups only, cheap
+    /// enough for the main thread.
+    public static var isAntigravityAppInstalled: Bool {
+        let dataDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/antigravity").path
+        return (appCandidatePaths + [dataDir]).contains(where: FileManager.default.fileExists(atPath:))
+            || bundleIdentifiers.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+    }
+    
+    /// Also counts a running language server, which spawns `ps`, so call it off the main thread.
     public static var isAntigravityInstalled: Bool {
-        let fileManager = FileManager.default
-        let home = fileManager.homeDirectoryForCurrentUser.path
-        let candidatePaths = [
-            "/Applications/Antigravity.app",
-            "/Applications/Antigravity IDE.app",
-            "\(home)/Applications/Antigravity.app",
-            "\(home)/Applications/Antigravity IDE.app",
-            "\(home)/.gemini/antigravity"
-        ]
-        for path in candidatePaths {
-            if fileManager.fileExists(atPath: path) {
-                return true
-            }
-        }
-        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity") != nil ||
-           NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity-ide") != nil {
-            return true
-        }
-        if cachedServer != nil || !findProcessCandidates().isEmpty {
-            return true
-        }
-        return false
+        isAntigravityAppInstalled || cachedServer != nil || !findProcessCandidates().isEmpty
     }
     
     public static func discover(forceRefresh: Bool = false) -> DiscoveredServer? {
@@ -169,10 +170,8 @@ public class ProcessDiscovery {
             
             let sourceName = candidate.isApp ? "Antigravity App" : "Antigravity IDE"
     
-            for port in ports {
-                if testEndpoint(port: port, token: candidate.csrfToken) {
-                    return DiscoveredServer(pid: candidate.pid, csrfToken: candidate.csrfToken, port: port, sourceName: sourceName)
-                }
+            for port in ports where testEndpoint(port: port, token: candidate.csrfToken) {
+                return DiscoveredServer(pid: candidate.pid, csrfToken: candidate.csrfToken, port: port, sourceName: sourceName)
             }
         } catch {
             return nil
@@ -194,11 +193,11 @@ public class ProcessDiscovery {
         request.httpBody = Data("{}".utf8)
         request.timeoutInterval = 2.0
         
-        var success = false
+        let success = OSAllocatedUnfairLock(initialState: false)
         let sem = DispatchSemaphore(value: 0)
-        let task = probeSession.dataTask(with: request) { _, response, error in
+        let task = probeSession.dataTask(with: request) { _, response, _ in
             if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                success = true
+                success.withLock { $0 = true }
             }
             sem.signal()
         }
@@ -208,33 +207,15 @@ public class ProcessDiscovery {
             task.cancel()
             sem.wait()
         }
-        return success
+        return success.withLock { $0 }
     }
     
     public static func launchAntigravityApp() {
-        let fileManager = FileManager.default
-        let home = fileManager.homeDirectoryForCurrentUser.path
-        let candidatePaths = [
-            "/Applications/Antigravity.app",
-            "/Applications/Antigravity IDE.app",
-            "\(home)/Applications/Antigravity.app",
-            "\(home)/Applications/Antigravity IDE.app"
-        ]
-        for path in candidatePaths {
-            if fileManager.fileExists(atPath: path) {
-                let url = URL(fileURLWithPath: path)
-                let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
-                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
-                return
-            }
-        }
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity") ??
-                         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.antigravity-ide") {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
-            return
-        }
+        let appURL = appCandidatePaths.first(where: FileManager.default.fileExists(atPath:)).map(URL.init(fileURLWithPath:))
+            ?? bundleIdentifiers.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+        guard let appURL else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
     }
 }

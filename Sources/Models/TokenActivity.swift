@@ -2,7 +2,7 @@ import Foundation
 
 /// Token counts for one request or an aggregate of many. Input is split so cache reads,
 /// which are billed far below fresh input, never inflate the headline total.
-public struct TokenUsage: Equatable {
+public struct TokenUsage: Equatable, Sendable {
     public var input: Int = 0        // fresh, uncached input
     public var cacheRead: Int = 0
     public var cacheWrite: Int = 0
@@ -32,7 +32,7 @@ public struct TokenUsage: Equatable {
     }
 }
 
-public struct DailyTokenActivity: Equatable, Identifiable {
+public struct DailyTokenActivity: Equatable, Identifiable, Sendable {
     /// Start of the local calendar day
     public let day: Date
     public let usage: TokenUsage
@@ -52,7 +52,7 @@ public enum TokenActivityRange: Int, CaseIterable, Identifiable {
     public static var longest: TokenActivityRange { .month }
 }
 
-public struct TokenActivitySummary: Equatable {
+public struct TokenActivitySummary: Equatable, Sendable {
     /// Oldest first, one entry per day (zero-filled), ending today
     public let days: [DailyTokenActivity]
     /// Yesterday's usage up to the same time of day as now, so a partly-used today is compared fairly

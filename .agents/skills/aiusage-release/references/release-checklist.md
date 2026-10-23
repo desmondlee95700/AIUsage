@@ -78,7 +78,8 @@ If executing manually without the script:
    ```bash
    ./scripts/build_dmg.sh
    ./scripts/release_notes.sh vX.Y.Z > notes.md
-   gh release create "vX.Y.Z" AIUsage.dmg "AIUsage-vX.Y.Z.dmg" --title "AIUsage vX.Y.Z" --notes-file notes.md --verify-tag
+   shasum -a 256 AIUsage.dmg AIUsage-vX.Y.Z.dmg > SHA256SUMS
+   gh release create "vX.Y.Z" AIUsage.dmg "AIUsage-vX.Y.Z.dmg" SHA256SUMS --title "AIUsage vX.Y.Z" --notes-file notes.md --verify-tag
    ```
 
 ---
@@ -86,7 +87,7 @@ If executing manually without the script:
 ## 4. Post-Release Verification
 
 1. **Verify GitHub Release**:
-   - Check `gh release view vX.Y.Z` to confirm assets `AIUsage.dmg` and `AIUsage-vX.Y.Z.dmg` are attached.
+   - Check `gh release view vX.Y.Z` to confirm assets `AIUsage.dmg`, `AIUsage-vX.Y.Z.dmg` and `SHA256SUMS` are attached (the in-app updater won't install without `SHA256SUMS`).
 2. **In-App Updater Check**:
    - In running AIUsage app, click `Check for Updates...` (`⌘U`) in the context menu.
    - Ensure the updater discovers the latest release tag from GitHub Releases API:
@@ -108,5 +109,6 @@ If executing manually without the script:
   ```
 - **Release failed mid-upload**: Re-upload assets or edit existing release:
   ```bash
-  gh release upload vX.Y.Z AIUsage.dmg AIUsage-vX.Y.Z.dmg --clobber
+  shasum -a 256 AIUsage.dmg AIUsage-vX.Y.Z.dmg > SHA256SUMS
+  gh release upload vX.Y.Z AIUsage.dmg AIUsage-vX.Y.Z.dmg SHA256SUMS --clobber
   ```

@@ -382,10 +382,13 @@ if [[ ! -f "$DIR/AIUsage.dmg" || ! -f "$DIR/AIUsage-${TAG_NAME}.dmg" ]]; then
     exit 1
 fi
 
+# The in-app updater refuses to open a DMG that doesn't match this file
+(cd "$DIR" && shasum -a 256 AIUsage.dmg "AIUsage-${TAG_NAME}.dmg" > SHA256SUMS)
+
 echo "🌐 Publishing GitHub Release ${TAG_NAME}..."
 NOTES_PATH="$(mktemp)"
 "$DIR/scripts/release_notes.sh" "$TAG_NAME" > "$NOTES_PATH"
-gh release create "$TAG_NAME" "AIUsage.dmg" "AIUsage-${TAG_NAME}.dmg" --title "$RELEASE_TITLE" --notes-file "$NOTES_PATH" --verify-tag
+gh release create "$TAG_NAME" "AIUsage.dmg" "AIUsage-${TAG_NAME}.dmg" "SHA256SUMS" --title "$RELEASE_TITLE" --notes-file "$NOTES_PATH" --verify-tag
 rm -f "$NOTES_PATH"
 echo ""
 echo "🎉 Release ${TAG_NAME} successfully published!"

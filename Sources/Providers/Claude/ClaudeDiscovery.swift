@@ -8,10 +8,8 @@ public struct ClaudeDiscovery {
     ]
     
     public static var isClaudeAppInstalled: Bool {
-        for bundleId in claudeBundleIdentifiers {
-            if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil {
-                return true
-            }
+        for bundleId in claudeBundleIdentifiers where NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil {
+            return true
         }
         let fileManager = FileManager.default
         let standardPaths = [
@@ -48,14 +46,12 @@ public struct ClaudeDiscovery {
             "\(NSHomeDirectory())/Applications/Claude.app"
         ]
         
-        for path in standardPaths {
-            if fileManager.fileExists(atPath: path) {
-                let url = URL(fileURLWithPath: path)
-                let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
-                NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
-                return
-            }
+        for path in standardPaths where fileManager.fileExists(atPath: path) {
+            let url = URL(fileURLWithPath: path)
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config, completionHandler: nil)
+            return
         }
         
         // Fallback to web if desktop app is not installed

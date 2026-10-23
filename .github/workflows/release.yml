@@ -73,6 +73,8 @@ jobs:
           ./scripts/build_dmg.sh
           test -f AIUsage.dmg
           test -f "AIUsage-$TAG.dmg"
+          # The in-app updater refuses to open a DMG that doesn't match this file
+          shasum -a 256 AIUsage.dmg "AIUsage-$TAG.dmg" > SHA256SUMS
 
       - name: Release notes
         # checkout can fetch annotated tags as lightweight; refetch so highlights in the tag message survive
@@ -84,7 +86,7 @@ jobs:
       - name: Publish GitHub Release
         if: steps.existing.outputs.skip != 'true'
         run: |
-          ARGS=("$TAG" AIUsage.dmg "AIUsage-$TAG.dmg" --title "AIUsage $TAG" --notes-file release-notes.md --verify-tag)
+          ARGS=("$TAG" AIUsage.dmg "AIUsage-$TAG.dmg" SHA256SUMS --title "AIUsage $TAG" --notes-file release-notes.md --verify-tag)
           # Pre-release tags (v2.2.0-beta.1) are hidden from /releases/latest, which the in-app updater uses
           [[ "$TAG" == *-* ]] && ARGS+=(--prerelease)
           gh release create "${ARGS[@]}"

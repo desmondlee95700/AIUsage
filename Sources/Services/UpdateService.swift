@@ -1,7 +1,8 @@
 import Foundation
 import Cocoa
+import CryptoKit
 
-public struct GitHubReleaseAsset: Codable {
+public struct GitHubReleaseAsset: Codable, Sendable {
     public let name: String
     public let browserDownloadUrl: String
     public let size: Int?
@@ -13,7 +14,7 @@ public struct GitHubReleaseAsset: Codable {
     }
 }
 
-public struct GitHubRelease: Codable {
+public struct GitHubRelease: Codable, Sendable {
     public let tagName: String
     public let name: String?
     public let body: String?
@@ -34,22 +35,28 @@ public struct GitHubRelease: Codable {
         assets.first { $0.name.lowercased() == "aiusage.dmg" } ??
         assets.first { $0.name.lowercased().hasSuffix(".dmg") }
     }
+    
+    /// `shasum -a 256` output for the DMGs, published by the Release workflow
+    public var checksumsAsset: GitHubReleaseAsset? {
+        assets.first { $0.name == "SHA256SUMS" }
+    }
 }
 
+@MainActor
 public final class UpdateService: ObservableObject {
     public static let shared = UpdateService()
     
-    private static let repoOwner = "desmondlee95700"
-    private static let repoName = "AIUsage"
+    nonisolated private static let repoOwner = "desmondlee95700"
+    nonisolated private static let repoName = "AIUsage"
     
     /// GitHub hosts the updater may contact (AGENTS.md §6.3): the releases API, the release
     /// download link, and the CDN that download redirects to.
-    static let allowedHosts: Set<String> = ["api.github.com", "github.com", "release-assets.githubusercontent.com"]
+    nonisolated static let allowedHosts: Set<String> = ["api.github.com", "github.com", "release-assets.githubusercontent.com"]
     
     @Published public var isChecking: Bool = false
     @Published public var isDownloading: Bool = false
-    @Published public var availableUpdate: GitHubRelease? = nil
-    @Published public var downloadErrorMessage: String? = nil
+    @Published public var availableUpdate: GitHubRelease?
+    @Published public var downloadErrorMessage: String?
     
     private let session: URLSession
     
@@ -64,11 +71,11 @@ public final class UpdateService: ObservableObject {
     
     /// Release metadata comes from the API, so asset and page URLs are checked before use rather
     /// than trusted: HTTPS, on github.com, and inside this repository's releases.
-    static func isTrustedReleaseURL(_ url: URL) -> Bool {
+    nonisolated static func isTrustedReleaseURL(_ url: URL) -> Bool {
         url.scheme == "https" && url.host == "github.com" && url.path.hasPrefix("/\(repoOwner)/\(repoName)/releases/")
     }
     
-    static func isAllowedHost(_ url: URL) -> Bool {
+    nonisolated static func isAllowedHost(_ url: URL) -> Bool {
         url.scheme == "https" && url.host.map(allowedHosts.contains) == true
     }
     
@@ -89,7 +96,7 @@ public final class UpdateService: ObservableObject {
     // MARK: - Version Comparison
     
     /// Semantic version comparison, including pre-release suffixes (`2.1.3-rc.1 < 2.1.3`).
-    public static func isVersion(_ v1: String, greaterThan v2: String) -> Bool {
+    public nonisolated static func isVersion(_ v1: String, greaterThan v2: String) -> Bool {
         let (core1, pre1) = splitVersion(v1)
         let (core2, pre2) = splitVersion(v2)
 
@@ -110,7 +117,7 @@ public final class UpdateService: ObservableObject {
     }
 
     /// Splits "v2.1.3-rc.1" into numeric core [2, 1, 3] and pre-release identifiers ["rc", "1"].
-    private static func splitVersion(_ version: String) -> (core: [Int], prerelease: [String]?) {
+    nonisolated private static func splitVersion(_ version: String) -> (core: [Int], prerelease: [String]?) {
         let clean = version.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
         let pieces = clean.split(separator: "-", maxSplits: 1)
         let core = (pieces.first ?? "").split(separator: ".").compactMap { Int($0) }
@@ -120,7 +127,7 @@ public final class UpdateService: ObservableObject {
 
     /// Semver precedence for pre-release identifiers: numeric compare numerically and rank
     /// below alphanumeric ones; a shorter list ranks lower when all shared identifiers match.
-    private static func isPrerelease(_ a: [String], greaterThan b: [String]) -> Bool {
+    nonisolated private static func isPrerelease(_ a: [String], greaterThan b: [String]) -> Bool {
         for (x, y) in zip(a, b) where x != y {
             switch (Int(x), Int(y)) {
             case let (nx?, ny?): return nx > ny
@@ -147,49 +154,48 @@ public final class UpdateService: ObservableObject {
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         request.setValue("AIUsage-Updater/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
         
-        session.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.isChecking = false
-                
-                if let error = error {
-                    if isUserInitiated {
-                        self.showErrorAlert(message: "Could not connect to GitHub to check for updates: \(error.localizedDescription)")
-                    }
-                    return
+        Task {
+            let data: Data
+            do {
+                data = try await session.data(for: request).0
+                isChecking = false
+            } catch {
+                isChecking = false
+                if isUserInitiated {
+                    showErrorAlert(message: "Could not connect to GitHub to check for updates: \(error.localizedDescription)")
                 }
-                
-                guard let data = data,
-                      let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) else {
-                    if isUserInitiated {
-                        self.showErrorAlert(message: "Failed to parse release information from GitHub.")
-                    }
-                    return
+                return
+            }
+            
+            guard let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) else {
+                if isUserInitiated {
+                    showErrorAlert(message: "Failed to parse release information from GitHub.")
                 }
-                
-                let currentVer = AppVersion.current
-                if Self.isVersion(release.tagName, greaterThan: currentVer) {
-                    self.availableUpdate = release
-                    // Background checks stay quiet for a version the user chose to skip;
-                    // the header badge and menu item still offer it.
-                    if isUserInitiated || self.skippedVersion != release.tagName {
-                        self.promptUpdate(release, allowSkip: !isUserInitiated)
-                    }
-                } else {
-                    self.availableUpdate = nil
-                    if isUserInitiated {
-                        self.showUpToDateAlert()
-                    }
+                return
+            }
+            
+            let currentVer = AppVersion.current
+            if Self.isVersion(release.tagName, greaterThan: currentVer) {
+                availableUpdate = release
+                // Background checks stay quiet for a version the user chose to skip;
+                // the header badge and menu item still offer it.
+                if isUserInitiated || skippedVersion != release.tagName {
+                    promptUpdate(release, allowSkip: !isUserInitiated)
+                }
+            } else {
+                availableUpdate = nil
+                if isUserInitiated {
+                    showUpToDateAlert()
                 }
             }
-        }.resume()
+        }
     }
     
     // MARK: - Update Presentation Dialog
     
     private var skippedVersion: String? {
-        get { UserDefaults.standard.string(forKey: "skippedUpdateVersion") }
-        set { UserDefaults.standard.set(newValue, forKey: "skippedUpdateVersion") }
+        get { UserDefaults.standard.string(forKey: AppSettings.skippedUpdateVersionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: AppSettings.skippedUpdateVersionKey) }
     }
     
     /// Runs an alert in front of other apps. As a menu bar (accessory) app we aren't
@@ -202,7 +208,7 @@ public final class UpdateService: ObservableObject {
     /// Converts the Markdown release body into plain text for NSAlert, which can't render
     /// Markdown: headings and emphasis markers are stripped, list items become bullets, and
     /// the "Full changelog" link is dropped since "View Release Notes" opens the release page.
-    static func plainTextReleaseNotes(_ markdown: String, maxLength: Int = 450) -> String {
+    nonisolated static func plainTextReleaseNotes(_ markdown: String, maxLength: Int = 450) -> String {
         var lines: [String] = []
         for rawLine in markdown.components(separatedBy: .newlines) {
             var line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -281,11 +287,12 @@ public final class UpdateService: ObservableObject {
     public func downloadAndInstallUpdate(_ release: GitHubRelease) {
         guard let asset = release.dmgAsset,
               let downloadURL = URL(string: asset.browserDownloadUrl),
-              Self.isTrustedReleaseURL(downloadURL) else {
-            // Fallback to opening release page in browser
-            if let pageURL = URL(string: release.htmlUrl), Self.isTrustedReleaseURL(pageURL) {
-                NSWorkspace.shared.open(pageURL)
-            }
+              Self.isTrustedReleaseURL(downloadURL),
+              let checksumsURL = release.checksumsAsset.flatMap({ URL(string: $0.browserDownloadUrl) }),
+              Self.isTrustedReleaseURL(checksumsURL) else {
+            // No verifiable installer: open the release page, where a browser download is
+            // quarantined and checked by Gatekeeper
+            openReleasePage(release)
             return
         }
         
@@ -295,15 +302,37 @@ public final class UpdateService: ObservableObject {
         let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
         let destinationURL = downloadsDir.appendingPathComponent("AIUsage-\(release.tagName).dmg")
         
+        Task {
+            // A file this app writes carries no quarantine flag, so Gatekeeper never checks it.
+            // The published checksum is what vouches for the installer before it's opened.
+            guard let checksums = try? await session.data(from: checksumsURL).0,
+                  let expectedSHA256 = Self.sha256(for: asset.name, inChecksums: checksums) else {
+                isDownloading = false
+                showErrorAlert(message: "Couldn't verify the update's checksum, so the release page will open instead.")
+                openReleasePage(release)
+                return
+            }
+            startDownload(from: downloadURL, asset: asset, expectedSHA256: expectedSHA256, to: destinationURL, release: release)
+        }
+    }
+    
+    private func openReleasePage(_ release: GitHubRelease) {
+        if let pageURL = URL(string: release.htmlUrl), Self.isTrustedReleaseURL(pageURL) {
+            NSWorkspace.shared.open(pageURL)
+        }
+    }
+    
+    private func startDownload(from downloadURL: URL, asset: GitHubReleaseAsset, expectedSHA256: String, to destinationURL: URL, release: GitHubRelease) {
+        let expectedSize = asset.size
         let task = session.downloadTask(with: downloadURL) { [weak self] tempURL, response, error in
             // URLSession deletes tempURL once this handler returns, so validate and move it
-            // here rather than after hopping to the main queue.
+            // here rather than after hopping to the main actor.
             let failure = Self.saveDownload(
                 tempURL: tempURL, response: response, error: error,
-                expectedSize: asset.size, to: destinationURL
+                expectedSize: expectedSize, expectedSHA256: expectedSHA256, to: destinationURL
             )
 
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 guard let self = self else { return }
                 self.isDownloading = false
 
@@ -332,11 +361,12 @@ public final class UpdateService: ObservableObject {
 
     /// Validates a finished download and moves it to `destination`. Returns a user-facing
     /// error message, or nil on success. Must run inside the download task's completion handler.
-    static func saveDownload(
+    nonisolated static func saveDownload(
         tempURL: URL?,
         response: URLResponse?,
         error: Error?,
         expectedSize: Int?,
+        expectedSHA256: String? = nil,
         to destination: URL
     ) -> String? {
         if let error = error {
@@ -355,6 +385,12 @@ public final class UpdateService: ObservableObject {
            actual != expected {
             return "The downloaded installer is incomplete (\(actual) of \(expected) bytes). Please try again."
         }
+        if let expectedSHA256 {
+            guard let data = try? Data(contentsOf: tempURL, options: .mappedIfSafe),
+                  SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == expectedSHA256.lowercased() else {
+                return "The downloaded installer doesn't match the published checksum, so it wasn't opened."
+            }
+        }
         do {
             if fm.fileExists(atPath: destination.path) {
                 try fm.removeItem(at: destination)
@@ -364,6 +400,21 @@ public final class UpdateService: ObservableObject {
         } catch {
             return "Could not save DMG installer: \(error.localizedDescription)"
         }
+    }
+    
+    /// The hex digest for `fileName` in `shasum -a 256` output ("<hex>  <name>" per line).
+    nonisolated static func sha256(for fileName: String, inChecksums data: Data) -> String? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            let parts = line.split(separator: " ", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            // shasum marks binary mode with a leading "*" on the name
+            let name = parts[1].trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "*"))
+            if name == fileName, parts[0].count == 64, parts[0].allSatisfy(\.isHexDigit) {
+                return String(parts[0]).lowercased()
+            }
+        }
+        return nil
     }
     
     private func showUpToDateAlert() {

@@ -38,11 +38,11 @@ public final class TokenActivityService: @unchecked Sendable {
     // MARK: - Public API
 
     public func loadClaude() async -> TokenActivitySummary? {
-        await load(roots: Self.claudeProjectRoots, parser: Self.parseClaudeLog)
+        await load(roots: Self.claudeProjectRoots, parser: { Self.parseClaudeLog($0) })
     }
 
     public func loadCodex() async -> TokenActivitySummary? {
-        await load(roots: Self.codexSessionRoots, parser: Self.parseCodexLog)
+        await load(roots: Self.codexSessionRoots, parser: { Self.parseCodexLog($0) })
     }
 
     // MARK: - Locations
@@ -71,7 +71,7 @@ public final class TokenActivityService: @unchecked Sendable {
     // MARK: - Loading
 
     /// Scans on `queue`, which serializes access to `cache` and keeps the file reads off the caller's thread.
-    private func load(roots: [URL], parser: @escaping (Data) -> [ParsedEntry]) async -> TokenActivitySummary? {
+    private func load(roots: [URL], parser: @escaping @Sendable (Data) -> [ParsedEntry]) async -> TokenActivitySummary? {
         await withCheckedContinuation { continuation in
             queue.async {
                 continuation.resume(returning: self.scan(roots: roots, parser: parser))

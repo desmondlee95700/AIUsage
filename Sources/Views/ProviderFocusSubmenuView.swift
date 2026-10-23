@@ -5,7 +5,7 @@ public struct ProviderFocusSubmenuView: View {
     @ObservedObject var service: QuotaService
     var onDismiss: (() -> Void)?
     
-    @State private var hoveredRow: String? = nil
+    @State private var hoveredRow: String?
     
     public init(service: QuotaService, onDismiss: (() -> Void)? = nil) {
         self.service = service
@@ -34,11 +34,13 @@ public struct ProviderFocusSubmenuView: View {
             // "All Providers" Option (if more than 1 installed)
             if service.installedProvidersCount > 1 {
                 menuRow(
-                    id: "all",
-                    tint: LiquidGlassPalette.aiBlue,
-                    title: "All Providers",
-                    icon: AppIconHelper.combinedTemplate(for: service.installedProviders),
-                    systemFallback: "sparkles",
+                    MenuRowStyle(
+                        id: "all",
+                        tint: LiquidGlassPalette.aiBlue,
+                        title: "All Providers",
+                        icon: AppIconHelper.combinedTemplate(for: service.installedProviders),
+                        systemFallback: "sparkles"
+                    ),
                     isChecked: service.isAllProvidersSelected
                 ) {
                     service.selectAllProviders()
@@ -53,11 +55,13 @@ public struct ProviderFocusSubmenuView: View {
             // Antigravity (Google)
             if service.isGeminiInstalled {
                 menuRow(
-                    id: "gemini",
-                    tint: LiquidGlassPalette.antigravity,
-                    title: "Antigravity (Google)",
-                    icon: AppIconHelper.antigravityTemplate,
-                    systemFallback: "sparkles",
+                    MenuRowStyle(
+                        id: "gemini",
+                        tint: LiquidGlassPalette.antigravity,
+                        title: "Antigravity (Google)",
+                        icon: AppIconHelper.antigravityTemplate,
+                        systemFallback: "sparkles"
+                    ),
                     isChecked: service.isProviderSelected(.gemini)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -71,11 +75,13 @@ public struct ProviderFocusSubmenuView: View {
             // ChatGPT (OpenAI)
             if service.isCodexInstalled {
                 menuRow(
-                    id: "chatgpt",
-                    tint: LiquidGlassPalette.chatgpt,
-                    title: "ChatGPT (OpenAI)",
-                    icon: AppIconHelper.chatgptTemplate,
-                    systemFallback: "circle.hexagongrid",
+                    MenuRowStyle(
+                        id: "chatgpt",
+                        tint: LiquidGlassPalette.chatgpt,
+                        title: "ChatGPT (OpenAI)",
+                        icon: AppIconHelper.chatgptTemplate,
+                        systemFallback: "circle.hexagongrid"
+                    ),
                     isChecked: service.isProviderSelected(.chatgpt)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -89,11 +95,13 @@ public struct ProviderFocusSubmenuView: View {
             // Claude (Anthropic)
             if service.isClaudeInstalled {
                 menuRow(
-                    id: "claude",
-                    tint: LiquidGlassPalette.claude,
-                    title: "Claude (Anthropic)",
-                    icon: AppIconHelper.claudeTemplate,
-                    systemFallback: "asterisk",
+                    MenuRowStyle(
+                        id: "claude",
+                        tint: LiquidGlassPalette.claude,
+                        title: "Claude (Anthropic)",
+                        icon: AppIconHelper.claudeTemplate,
+                        systemFallback: "asterisk"
+                    ),
                     isChecked: service.isProviderSelected(.claude)
                 ) {
                     if NSEvent.modifierFlags.contains(.option) {
@@ -129,15 +137,17 @@ public struct ProviderFocusSubmenuView: View {
         .frame(width: 236)
     }
     
-    private func menuRow(
-        id: String,
-        tint: Color,
-        title: String,
-        icon: NSImage?,
-        systemFallback: String,
-        isChecked: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
+    /// How a provider row looks: its accent, label and icon
+    private struct MenuRowStyle {
+        let id: String
+        let tint: Color
+        let title: String
+        let icon: NSImage?
+        let systemFallback: String
+    }
+    
+    private func menuRow(_ style: MenuRowStyle, isChecked: Bool, action: @escaping () -> Void) -> some View {
+        let (id, tint, title, icon, systemFallback) = (style.id, style.tint, style.title, style.icon, style.systemFallback)
         let isHovered = hoveredRow == id
         
         return Button(action: action) {
@@ -167,8 +177,7 @@ public struct ProviderFocusSubmenuView: View {
                     if let icon = icon {
                         Image(nsImage: icon)
                             .resizable()
-                            .renderingMode(.template)
-                            .aspectRatio(contentMode: .fit)
+                            .renderingMode(.template).scaledToFit()
                             .foregroundColor(isHovered || isChecked ? .white : LiquidGlassText.secondary)
                             .frame(width: 14, height: 14)
                     } else {

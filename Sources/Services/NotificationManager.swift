@@ -37,7 +37,7 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
     }
     
     private func updatePermission() async {
-        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        let status = await Self.authorizationStatus()
         let current: NotificationPermission
         switch status {
         case .notDetermined: current = .notDetermined
@@ -71,9 +71,15 @@ public class NotificationManager: NSObject, ObservableObject, UNUserNotification
         NSWorkspace.shared.open(url)
     }
     
+    /// Reads the status off the main actor: older SDKs don't mark UNNotificationSettings Sendable,
+    /// so only the status enum crosses back.
+    private nonisolated static func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+    
     public func sendLowQuotaNotification(provider: String, remainingQuota: String, window: String? = nil, resetDate: Date? = nil) {
         Task {
-            switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
+            switch await Self.authorizationStatus() {
             case .denied:
                 // This runs from background quota checks, so respect a denial silently
                 // rather than popping open System Settings unprompted.

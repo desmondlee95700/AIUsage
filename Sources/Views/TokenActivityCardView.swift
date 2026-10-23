@@ -6,7 +6,7 @@ public struct TokenActivityCardView: View {
     public let fullActivity: TokenActivitySummary
     public let tint: Color
 
-    @State private var hoveredDay: Date? = nil
+    @State private var hoveredDay: Date?
     @Namespace private var rangeNamespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Shared by every activity card so switching the period on one switches both
@@ -87,12 +87,12 @@ public struct TokenActivityCardView: View {
         HStack(spacing: 2) {
             ForEach(TokenActivityRange.allCases) { option in
                 let isSelected = option == range
-                Button(action: {
+                Button {
                     withAnimation(LiquidGlassTokens.motion(LiquidGlassTokens.interactiveSpring, reduceMotion: reduceMotion)) {
                         rangeDays = option.rawValue
                         hoveredDay = nil
                     }
-                }) {
+                } label: {
                     Text(option.shortLabel)
                         .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
                         .foregroundColor(isSelected ? LiquidGlassText.primary : LiquidGlassText.tertiary)

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import os
 
 public struct CodexDiscovery {
     private static let chatGPTBundleIdentifiers = [
@@ -7,19 +8,18 @@ public struct CodexDiscovery {
         "com.openai.chat"
     ]
 
-    private static let cacheLock = NSLock()
-    private static var cachedBinaryPath: String?
+    private static let cachedBinaryPath = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     /// Cached because the lookup may walk the whole ChatGPT.app bundle and runs on every refresh.
     /// The cached path is re-validated each call, so an app update or uninstall triggers a fresh search.
     public static func findCodexBinary() -> String? {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        if let cached = cachedBinaryPath, FileManager.default.isExecutableFile(atPath: cached) {
+        cachedBinaryPath.withLock { cached in
+            if let path = cached, FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+            cached = searchCodexBinary()
             return cached
         }
-        cachedBinaryPath = searchCodexBinary()
-        return cachedBinaryPath
     }
 
     private static func searchCodexBinary() -> String? {

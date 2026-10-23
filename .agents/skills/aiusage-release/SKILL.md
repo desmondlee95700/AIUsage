@@ -159,7 +159,8 @@ After the Release workflow succeeds:
   ```
 - **Re-upload Release Assets**:
   ```bash
-  gh release upload vX.Y.Z AIUsage.dmg AIUsage-vX.Y.Z.dmg --clobber
+  shasum -a 256 AIUsage.dmg AIUsage-vX.Y.Z.dmg > SHA256SUMS
+  gh release upload vX.Y.Z AIUsage.dmg AIUsage-vX.Y.Z.dmg SHA256SUMS --clobber
   ```
 
 For more architectural details and pre-flight references, consult `references/release-checklist.md`.
