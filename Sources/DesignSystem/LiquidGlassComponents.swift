@@ -316,6 +316,46 @@ public struct NotificationsBlockedStrip: View {
     }
 }
 
+// MARK: - Update Available Strip
+
+/// Row under the popover header offering a newer release. It stays until the update is
+/// installed, so dismissing the background prompt never hides the update for good.
+public struct UpdateAvailableStrip: View {
+    public let version: String
+    public let isDownloading: Bool
+    public let onUpdate: () -> Void
+
+    public init(version: String, isDownloading: Bool, onUpdate: @escaping () -> Void) {
+        self.version = version
+        self.isDownloading = isDownloading
+        self.onUpdate = onUpdate
+    }
+
+    private let tint = LiquidGlassPalette.aiBlue
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(tint)
+
+            Text("AIUsage \(version) is available")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(LiquidGlassText.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            GlassCapsuleButton(isDownloading ? "Downloading…" : "Update", style: .prominent(tint), size: .small, action: onUpdate)
+                .disabled(isDownloading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .liquidGlassCard(cornerRadius: 14, tint: tint, material: .thinMaterial)
+        .help("See what's new in \(version) and install it")
+    }
+}
+
 // MARK: - Menu Bar Marker
 
 /// Small glyph beside the limit the menu bar is showing, so a figure like "87%" up there can be

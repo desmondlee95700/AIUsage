@@ -60,6 +60,14 @@ public final class UpdateService: ObservableObject {
     
     private let session: URLSession
     
+    /// How often the running app looks for a new release. Menu bar apps stay open for days,
+    /// so a single check at launch would miss every release published after it.
+    nonisolated static let automaticCheckInterval: TimeInterval = 6 * 60 * 60
+    private var automaticCheckTask: Task<Void, Never>?
+    /// Versions already offered by a background check this run, so periodic checks don't
+    /// re-prompt after "Later"; the popover's update strip keeps offering them.
+    private var promptedVersions: Set<String> = []
+    
     private init() {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10.0
@@ -141,6 +149,21 @@ public final class UpdateService: ObservableObject {
     
     // MARK: - Check for Updates
     
+    /// Checks shortly after launch, then every `automaticCheckInterval`. A check that fails
+    /// (no network yet at login, say) is simply retried on the next tick.
+    public func startAutomaticChecks(initialDelay: TimeInterval = 4) {
+        automaticCheckTask?.cancel()
+        automaticCheckTask = Task { [weak self] in
+            var delay = initialDelay
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.checkForUpdates(isUserInitiated: false)
+                delay = Self.automaticCheckInterval
+            }
+        }
+    }
+    
     public func checkForUpdates(isUserInitiated: Bool = false) {
         guard !isChecking else { return }
         isChecking = true
@@ -177,10 +200,12 @@ public final class UpdateService: ObservableObject {
             let currentVer = AppVersion.current
             if Self.isVersion(release.tagName, greaterThan: currentVer) {
                 availableUpdate = release
-                // Background checks stay quiet for a version the user chose to skip;
-                // the header badge and menu item still offer it.
-                if isUserInitiated || skippedVersion != release.tagName {
-                    promptUpdate(release, allowSkip: !isUserInitiated)
+                // Background checks stay quiet for a version the user chose to skip or
+                // already saw this run; the popover's update strip and menu item still offer it.
+                if isUserInitiated {
+                    promptUpdate(release)
+                } else if skippedVersion != release.tagName, promptedVersions.insert(release.tagName).inserted {
+                    promptUpdate(release, allowSkip: true)
                 }
             } else {
                 availableUpdate = nil

@@ -24,6 +24,8 @@ public struct MainUsageView: View {
             // Header Bar
             headerBar
 
+            headerNotices
+
             specularDivider
 
             // Multi-Provider Flipping Switcher (ONLY shown when > 1 provider is selected)
@@ -62,6 +64,7 @@ public struct MainUsageView: View {
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: service.dualActiveProvider)
             .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: alertsNoticeKind)
         }
+        .animation(LiquidGlassTokens.motion(LiquidGlassTokens.stateSpring, reduceMotion: reduceMotion), value: headerNoticeCount)
         .background(
             // Provider-coloured tint bleed pooled behind the glass
             AmbientTintBackground(tint: activeTint)
@@ -112,6 +115,8 @@ public struct MainUsageView: View {
     private static let preferredContentHeight: CGFloat = 580
     /// Room left on screen for the header, provider switcher, popover arrow and a margin.
     private static let reservedScreenHeight: CGFloat = 150
+    /// Approximate height of one strip under the header, reserved on top of the header's own room
+    private static let headerNoticeHeight: CGFloat = 60
     
     /// Content height, shrunk on small displays so the popover never runs past the bottom of the screen.
     /// Measured on the screen under the pointer: the popover opens from a click on the status item,
@@ -120,7 +125,8 @@ public struct MainUsageView: View {
         let pointer = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
         guard let visible = screen?.visibleFrame.height else { return Self.preferredContentHeight }
-        return max(320, min(Self.preferredContentHeight, visible - Self.reservedScreenHeight))
+        let reserved = Self.reservedScreenHeight + CGFloat(headerNoticeCount) * Self.headerNoticeHeight
+        return max(320, min(Self.preferredContentHeight, visible - reserved))
     }
 
     /// Accent of the provider currently on screen, used for the ambient tint bleed
@@ -215,35 +221,19 @@ public struct MainUsageView: View {
                         .shadow(color: LiquidGlassPalette.aiBlue.opacity(0.50), radius: 4, x: 0, y: 0)
                 }
                 
-                VStack(alignment: .leading, spacing: 3) {
-                    // Name with the version beneath, stacked so the header row doesn't grow wider
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("AIUsage")
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundColor(LiquidGlassText.primary)
-                        Text(AppVersion.displayString)
-                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundColor(LiquidGlassText.tertiary)
-                    }
-                    .lineLimit(1)
-                    .fixedSize()
-                    .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
-
-                    if let update = updateService.availableUpdate {
-                        Button { updateService.promptUpdate(update) } label: {
-                            Text("New \(update.tagName)")
-                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                                .foregroundColor(LiquidGlassText.primary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .liquidGlassPill(isProminent: false, tint: LiquidGlassPalette.aiBlue)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Update \(update.tagName) available. Click to download.")
-                    }
+                // Name with the version beneath, stacked so the header row doesn't grow wider
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("AIUsage")
+                        .font(.system(size: 13.5, weight: .bold))
+                        .foregroundColor(LiquidGlassText.primary)
+                    Text(AppVersion.displayString)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(LiquidGlassText.tertiary)
                 }
-
+                .lineLimit(1)
+                .fixedSize()
+                .help("AIUsage \(AppVersion.current) (build \(AppVersion.build))")
             }
             
             // Freshness pill: how current the numbers are, re-rendered as they age.
@@ -272,21 +262,6 @@ public struct MainUsageView: View {
             
             Spacer(minLength: 4)
             
-            // Update Button (when update is available)
-            if let update = updateService.availableUpdate {
-                Button {
-                    updateService.promptUpdate(update)
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 26, height: 26)
-                        .liquidGlassButton(cornerRadius: 13, isProminent: true, tint: LiquidGlassPalette.aiBlue)
-                }
-                .buttonStyle(.plain)
-                .help("Update \(update.tagName) available. Click to download.")
-            }
-            
             // Control cluster: one glass capsule holding the header actions
             HStack(spacing: 0) {
                 if service.installedProvidersCount > 1 {
@@ -303,13 +278,6 @@ public struct MainUsageView: View {
                         })
                         .padding(4)
                     }
-                }
-                
-                GlassIconButton(
-                    systemImage: "moon.fill",
-                    help: "Blackout: turn the screen black while an agent keeps working. Any key or mouse move wakes it."
-                ) {
-                    BlackoutController.shared.start()
                 }
                 
                 GlassIconButton(
@@ -337,6 +305,15 @@ public struct MainUsageView: View {
     /// where it was easy to hit by mistake.
     private var moreMenu: some View {
         Menu {
+            // Blackout: turn the screen black while an agent keeps working; any key or mouse move wakes it
+            Button {
+                BlackoutController.shared.start()
+            } label: {
+                Label("Blackout Screen", systemImage: "moon.fill")
+            }
+            
+            Divider()
+            
             // Data: how often numbers refresh and when you're told they're low
             Picker(selection: $service.refreshInterval) {
                 ForEach(RefreshInterval.allCases, id: \.self) { interval in
@@ -443,6 +420,39 @@ public struct MainUsageView: View {
         }
     }
     
+    // MARK: - Header Notices
+    
+    /// Strips stacked under the header for states that come and go, so the header row itself
+    /// never changes width. The larger alerts setup card stays in the content area.
+    private var headerNoticeCount: Int {
+        (updateService.availableUpdate != nil ? 1 : 0) + (alertsNoticeKind == .blocked ? 1 : 0)
+    }
+    
+    @ViewBuilder
+    private var headerNotices: some View {
+        if headerNoticeCount > 0 {
+            VStack(spacing: 8) {
+                if let update = updateService.availableUpdate {
+                    UpdateAvailableStrip(
+                        version: update.tagName,
+                        isDownloading: updateService.isDownloading
+                    ) {
+                        updateService.promptUpdate(update)
+                    }
+                }
+                if alertsNoticeKind == .blocked {
+                    NotificationsBlockedStrip(
+                        onOpenSettings: { NotificationManager.openNotificationSettings() },
+                        onTurnOffAlerts: turnOffAlerts
+                    )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+    
     // MARK: - Alerts Notice
     
     private enum AlertsNoticeKind: Equatable {
@@ -470,34 +480,18 @@ public struct MainUsageView: View {
         }
     }
     
+    /// The alerts setup card, at the top of the content. The blocked strip is a header notice.
     @ViewBuilder
     private var alertsNotice: some View {
-        if alertsNoticeKind != .none {
-            alertsNoticeContent
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-        }
-    }
-    
-    @ViewBuilder
-    private var alertsNoticeContent: some View {
-        Group {
-            switch alertsNoticeKind {
-            case .none:
-                EmptyView()
-            case .setUp:
-                // "Not Now" turns alerts off: that's what declining means, and it can be undone from the menu
-                AlertsOnboardingCard(
-                    onTurnOn: { service.turnOnAlerts() },
-                    onDismiss: turnOffAlerts
-                )
-            case .blocked:
-                NotificationsBlockedStrip(
-                    onOpenSettings: { NotificationManager.openNotificationSettings() },
-                    onTurnOffAlerts: turnOffAlerts
-                )
-            }
+        if alertsNoticeKind == .setUp {
+            // "Not Now" turns alerts off: that's what declining means, and it can be undone from the menu
+            AlertsOnboardingCard(
+                onTurnOn: { service.turnOnAlerts() },
+                onDismiss: turnOffAlerts
+            )
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
     

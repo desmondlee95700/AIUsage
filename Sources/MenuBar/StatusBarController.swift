@@ -41,13 +41,13 @@ public class StatusBarController {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 self?.service.refresh(forceDiscovery: true)
+                // The periodic timer doesn't tick during sleep, so check on wake too
+                UpdateService.shared.checkForUpdates(isUserInitiated: false)
             }
         }
         
-        // Background check for updates (silent)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
-            UpdateService.shared.checkForUpdates(isUserInitiated: false)
-        }
+        // Background update checks: soon after launch, then periodically
+        UpdateService.shared.startAutomaticChecks()
     }
     
     private func setupPopover() {
