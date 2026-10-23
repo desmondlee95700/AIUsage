@@ -7,7 +7,8 @@ set -euo pipefail
 # Usage: ./scripts/release_notes.sh v2.1.3
 
 TAG="${1:?usage: release_notes.sh <tag>}"
-REPO_URL="https://github.com/desmondlee95700/AIUsage"
+REPO="desmondlee95700/AIUsage"
+REPO_URL="https://github.com/${REPO}"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
@@ -63,6 +64,45 @@ fi
 [[ -n "$OTHER" ]] && printf '## 🔧 Other Changes\n\n%s\n' "$OTHER"
 if [[ -z "$FEATURES$FIXES$OTHER" ]]; then
     printf 'Maintenance release.\n\n'
+fi
+
+# Contributors: commit authors and Co-authored-by trailers in the range, as GitHub @handles.
+# AI assistants and bots are left out; they're tools, not contributors.
+AI_OR_BOT_PATTERN='\[bot\]|noreply@anthropic\.com|noreply@openai\.com|copilot|^claude|^codex|^chatgpt|^gemini|^cursor|^devin'
+NOREPLY_PATTERN='^([0-9]+\+)?([^@]+)@users\.noreply\.github\.com$'
+
+# "<email>\t<name>\t<sha>" per commit author, then per co-author (no sha: they didn't author it)
+PEOPLE=$(
+    git log --no-merges --format='%ae%x09%an%x09%H' "$RANGE"
+    git log --no-merges --format='%(trailers:key=Co-authored-by,valueonly,separator=%x0A)' "$RANGE" \
+        | sed -nE 's/^ *(.*[^ ]) *<([^>]+)>.*$/\2\t\1\t/p'
+)
+
+HANDLES=""
+while IFS=$'\t' read -r email name sha; do
+    [[ -z "$email" ]] && continue
+    who=$(printf '%s <%s>' "$name" "$email" | tr '[:upper:]' '[:lower:]')
+    [[ "$who" =~ $AI_OR_BOT_PATTERN ]] && continue
+
+    # GitHub login: from a noreply address, else from the commit via the API (CI and
+    # release.sh both have gh); the plain name when neither works
+    login=""
+    if [[ "$email" =~ $NOREPLY_PATTERN ]]; then
+        login="${BASH_REMATCH[2]}"
+    elif [[ -n "$sha" ]]; then
+        login=$(gh api "repos/${REPO}/commits/${sha}" -q '.author.login // empty' 2>/dev/null || true)
+    fi
+    if [[ -n "$login" ]]; then
+        HANDLES+="@${login}"$'\n'
+    else
+        HANDLES+="${name}"$'\n'
+    fi
+done < <(printf '%s\n' "$PEOPLE" | awk -F'\t' '!seen[$1]++')
+
+# One line per person; two emails for the same login collapse here
+CONTRIBUTORS=$(printf '%s' "$HANDLES" | sort -fu | sed 's/^/- /')
+if [[ -n "$CONTRIBUTORS" ]]; then
+    printf '## 🙌 Contributors\n\n%s\n\n' "$CONTRIBUTORS"
 fi
 
 if [[ -n "$PREV_TAG" ]]; then
