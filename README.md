@@ -50,16 +50,18 @@ Using the full name adds and trusts the [tap](https://github.com/desmondlee95700
 
 ### First launch
 
-AIUsage is not yet signed with an Apple Developer ID, so macOS Gatekeeper blocks it the first time it opens. This applies to both installation methods.
+> [!IMPORTANT]
+> AIUsage is not yet signed with an Apple Developer ID, so macOS Gatekeeper blocks it the first time it opens, whichever way you installed it. Open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to AIUsage.
 
-- **Recommended:** open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to AIUsage.
-- **If the DMG itself won't open**, click **Done** (not *Move to Trash*) and clear the quarantine flag. Use the file name you downloaded, for example `AIUsage-v2.6.6.dmg`:
+If that option doesn't appear:
+
+- **The DMG won't open:** click **Done** (not *Move to Trash*) and clear the quarantine flag. Use the file name you downloaded, for example `AIUsage-v2.6.6.dmg`:
 
   ```bash
   xattr -d com.apple.quarantine ~/Downloads/AIUsage.dmg
   ```
 
-- **If macOS reports that AIUsage "is damaged and can't be opened"**:
+- **macOS says AIUsage "is damaged and can't be opened":**
 
   ```bash
   xattr -cr /Applications/AIUsage.app
@@ -69,7 +71,10 @@ AIUsage is not yet signed with an Apple Developer ID, so macOS Gatekeeper blocks
 
 AIUsage checks GitHub Releases for new versions and offers to download them. Choose **Check for Updates…** (<kbd>⌘</kbd><kbd>U</kbd>) to check now. Homebrew users can also run `brew upgrade --cask aiusage`.
 
-To uninstall, quit AIUsage and move it to the Trash, or run `brew uninstall --cask aiusage`. Add `--zap` to remove its settings as well.
+To uninstall, quit AIUsage and move it to the Trash, or run `brew uninstall --cask aiusage`.
+
+> [!TIP]
+> `brew uninstall --zap --cask aiusage` also removes AIUsage's saved settings.
 
 ## Supported providers
 
@@ -79,7 +84,10 @@ To uninstall, quit AIUsage and move it to the Trash, or run `brew uninstall --ca
 | <img src="Assets/ChatGPTIcon.png" width="16" height="16" /> **ChatGPT** | 5-hour and weekly limits, reset credits, plan and email | Codex `app-server` over stdio | ChatGPT desktop app (bundles Codex) or the Codex CLI, signed in |
 | <img src="Assets/ClaudeIcon.png" width="16" height="16" /> **Claude** | 5-hour and weekly limits, Sonnet and Opus weekly limits where the plan has them, extra usage credits, plan and email | Claude's read-only usage endpoints | Claude desktop app or Claude Code, signed in |
 
-Providers are discovered automatically and reconnect when their apps restart. None of these requests consume model tokens.
+Providers are discovered automatically and reconnect when their apps restart.
+
+> [!NOTE]
+> AIUsage reads the same usage figures the providers show in their own apps. It never sends a prompt, so checking your quota doesn't use any of it.
 
 ## Features
 
@@ -87,7 +95,7 @@ Providers are discovered automatically and reconnect when their apps restart. No
 - **Detailed popover.** One tab per provider with every limit, its reset time and account details. A status pill shows how fresh the numbers are and turns amber after several missed refreshes.
 - **Low-quota alerts.** Notifications when a 5-hour or weekly limit falls past 30% and 10%, and when it resets. Alerts fire only during active use, never for quota that was already low at launch.
 - **Token activity.** 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs.
-- **Blackout.** Turns every display black and puts it to sleep while your agents keep working, then ends on the first key press, click or mouse move.
+- **Blackout.** Turns every display black and puts it to sleep while your agents keep working, then ends on the first key press, click or mouse move. Your Mac stays awake underneath, and the key press that wakes it never reaches the app behind.
 - **Native design.** SwiftUI with translucent materials that follows macOS's Reduce Transparency setting. The popover keeps a fixed height, so switching providers never resizes it.
 - **Launch at login**, a configurable refresh interval, and **Hide Email Addresses** for screenshots and screen sharing.
 
@@ -161,7 +169,9 @@ Issues and pull requests are welcome.
 - Open pull requests from a feature branch or fork. CI must pass: build, tests and the network policy check.
 - Use [Conventional Commits](https://www.conventionalcommits.org) for PR titles (`feat:`, `fix(scope):`, `docs:` …); they become the release notes.
 - Don't bump version numbers. Releases are cut by the maintainer.
-- Changes that add network destinations, telemetry or LLM calls won't be accepted. See [Privacy](#privacy).
+
+> [!WARNING]
+> Pull requests that add network destinations, telemetry, analytics or LLM calls won't be accepted. See [Privacy](#privacy).
 
 [`AGENTS.md`](AGENTS.md) covers the architecture and design guidelines in more detail.
 
