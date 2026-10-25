@@ -51,10 +51,9 @@ Download the latest pre-compiled macOS disk image:
 
 ### Option 2: Homebrew
 ```bash
-brew tap desmondlee95700/tap
-brew trust desmondlee95700/tap   # Homebrew 7+ refuses casks from third-party taps until trusted
-brew install --cask aiusage
+brew install --cask desmondlee95700/tap/aiusage
 ```
+The full name adds and trusts [the tap](https://github.com/desmondlee95700/homebrew-tap) for you.
 The cask tracks the latest stable release. AIUsage updates itself, or run `brew upgrade --cask aiusage`. The Gatekeeper notice above applies on first launch too.
 
 ---
