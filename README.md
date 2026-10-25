@@ -1,154 +1,170 @@
 <p align="center">
-  <img src="Assets/AppIcon.png" alt="AIUsage Logo" width="128" height="128" />
+  <img src="Assets/AppIcon.png" alt="AIUsage" width="128" height="128" />
 </p>
 
 <h1 align="center">AIUsage</h1>
 
 <p align="center">
-  <b>A sleek, native macOS menu bar app for instant, real-time access to your AI Model Quotas and account usage.</b>
-  <br />
-  Built in Swift &amp; SwiftUI &bull; macOS 27 Liquid Glass UI &bull; Zero Prompt Token Overhead
+  A native macOS menu bar app that shows your remaining AI quotas for Antigravity, ChatGPT and Claude at a glance, without spending a single token.
 </p>
 
 <p align="center">
-  <a href="https://github.com/desmondlee95700/AIUsage/releases/latest"><img src="https://img.shields.io/github/v/release/desmondlee95700/AIUsage?label=Download%20DMG&logo=apple&color=007AFF" alt="Download DMG"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS%2013%2B-000000?logo=apple" alt="macOS 13+">
+  <a href="https://github.com/desmondlee95700/AIUsage/releases/latest"><img src="https://img.shields.io/github/v/release/desmondlee95700/AIUsage?label=Release&color=007AFF" alt="Latest release"></a>
+  <a href="https://github.com/desmondlee95700/homebrew-tap"><img src="https://img.shields.io/badge/Homebrew-tap-FBB040?logo=homebrew&logoColor=white" alt="Homebrew tap"></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B-000000?logo=apple" alt="macOS 13+">
   <img src="https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white" alt="Swift 5.9+">
-  <img src="https://img.shields.io/badge/Design-macOS%2027%20Liquid%20Glass-8A2BE2" alt="Liquid Glass UI">
+  <a href="https://github.com/desmondlee95700/AIUsage/actions/workflows/ci.yml"><img src="https://github.com/desmondlee95700/AIUsage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
 </p>
 
 ---
 
-## ⬇️ Download & Installation
+## Contents
 
-### Option 1: Direct Download (Recommended)
-Download the latest pre-compiled macOS disk image:
+- [Installation](#installation)
+- [Supported providers](#supported-providers)
+- [Features](#features)
+- [Usage](#usage)
+- [Privacy](#privacy)
+- [Building from source](#building-from-source)
+- [Contributing](#contributing)
+- [License](#license)
 
-👉 **[Download AIUsage.dmg](https://github.com/desmondlee95700/AIUsage/releases/latest/download/AIUsage.dmg)**
+## Installation
 
-1. Open `AIUsage.dmg`.
-2. Drag **AIUsage.app** into your `/Applications` folder.
-3. Launch **AIUsage** — it will immediately appear in your macOS menu bar!
+**Requirements:** macOS 13 Ventura or later, and at least one supported provider signed in on this Mac (see [Supported providers](#supported-providers)).
 
-> [!TIP]
-> **macOS Gatekeeper Notice ("Apple could not verify "AIUsage.dmg" is free of malware")**:  
-> Because AIUsage is an independent open-source app distributed outside the Mac App Store without an Apple Developer ID certificate, macOS attaches a quarantine flag to files downloaded via browsers (Chrome, Safari) and blocks them.
-> 
-> If the DMG won't open, click **Done** (not *Move to Trash*), then open **Terminal** and clear the flag before opening it again:
-> ```bash
-> xattr -d com.apple.quarantine ~/Downloads/AIUsage.dmg
-> ```
-> Downloaded a different file, such as `AIUsage-v2.6.1.dmg` from the Releases page? Use its name instead:
-> ```bash
-> xattr -d com.apple.quarantine ~/Downloads/<file name>.dmg
-> ```
-> If the app itself is later reported as **"AIUsage is damaged and can't be opened"**, run:
-> ```bash
-> xattr -cr /Applications/AIUsage.app
-> ```
-> *(Or navigate to **System Settings > Privacy & Security**, scroll down to **Security**, and click **Open Anyway**.)*
+### Homebrew
 
-### Option 2: Homebrew
 ```bash
 brew install --cask desmondlee95700/tap/aiusage
 ```
-The full name adds and trusts [the tap](https://github.com/desmondlee95700/homebrew-tap) for you.
-The cask tracks the latest stable release. AIUsage updates itself, or run `brew upgrade --cask aiusage`. The Gatekeeper notice above applies on first launch too.
 
----
+Using the full name adds and trusts the [tap](https://github.com/desmondlee95700/homebrew-tap) automatically. The cask tracks the latest stable release.
 
-## ✨ Features
+### Direct download
 
-### 🤖 Multi-Provider Capabilities Matrix
+1. Download **[AIUsage.dmg](https://github.com/desmondlee95700/AIUsage/releases/latest/download/AIUsage.dmg)** from the latest release.
+2. Open the DMG and drag **AIUsage** into **Applications**.
+3. Launch AIUsage. It appears in the menu bar; there is no Dock icon.
 
-| Provider | Tracked Metrics | Connection Protocol | Token Overhead | Auto-Discovery |
-| :--- | :--- | :--- | :---: | :---: |
-| <img src="Assets/AntigravityIcon.png" width="18" height="18" valign="middle" /> **Google Antigravity** | • Rolling 5-Hour Limit<br>• Weekly Quota Limit<br>• Prompt & Flow Credits<br>• Google Account Tier & Email | Local Connect-RPC (`127.0.0.1`) | **0 Tokens** | ✅ Instant |
-| <img src="Assets/ChatGPTIcon.png" width="18" height="18" valign="middle" /> **OpenAI ChatGPT** | • 5-Hour Burst Limit<br>• Weekly Quota Limit<br>• Reset Credit Redemption<br>• OpenAI Plan & Email | Local Codex JSON-RPC stdio | **0 Tokens** | ✅ Instant |
-| <img src="Assets/ClaudeIcon.png" width="18" height="18" valign="middle" /> **Anthropic Claude** | • 5-Hour Rolling Limit<br>• Weekly Quota Limit<br>• Sonnet & Opus Weekly Limits (when your plan has them)<br>• Extra Usage Credits<br>• Claude Plan & Email | Desktop session / Claude Code sign-in | **0 Tokens** | ✅ Instant |
+### First launch
 
-<br />
+AIUsage is not yet signed with an Apple Developer ID, so macOS Gatekeeper blocks it the first time it opens. This applies to both installation methods.
 
-### 🍎 App & macOS Experience
+- **Recommended:** open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to AIUsage.
+- **If the DMG itself won't open**, click **Done** (not *Move to Trash*) and clear the quarantine flag. Use the file name you downloaded, for example `AIUsage-v2.6.6.dmg`:
 
-| Feature | Description |
+  ```bash
+  xattr -d com.apple.quarantine ~/Downloads/AIUsage.dmg
+  ```
+
+- **If macOS reports that AIUsage "is damaged and can't be opened"**:
+
+  ```bash
+  xattr -cr /Applications/AIUsage.app
+  ```
+
+### Updating and uninstalling
+
+AIUsage checks GitHub Releases for new versions and offers to download them. Choose **Check for Updates…** (<kbd>⌘</kbd><kbd>U</kbd>) to check now. Homebrew users can also run `brew upgrade --cask aiusage`.
+
+To uninstall, quit AIUsage and move it to the Trash, or run `brew uninstall --cask aiusage`. Add `--zap` to remove its settings as well.
+
+## Supported providers
+
+| Provider | What is shown | Data source | Needs |
+| :--- | :--- | :--- | :--- |
+| <img src="Assets/AntigravityIcon.png" width="16" height="16" /> **Google Antigravity** | 5-hour and weekly limits, prompt and flow credits, account tier and email | Antigravity's local language server (`127.0.0.1`) | Antigravity running |
+| <img src="Assets/ChatGPTIcon.png" width="16" height="16" /> **ChatGPT** | 5-hour and weekly limits, reset credits, plan and email | Codex `app-server` over stdio | ChatGPT desktop app (bundles Codex) or the Codex CLI, signed in |
+| <img src="Assets/ClaudeIcon.png" width="16" height="16" /> **Claude** | 5-hour and weekly limits, Sonnet and Opus weekly limits where the plan has them, extra usage credits, plan and email | Claude's read-only usage endpoints | Claude desktop app or Claude Code, signed in |
+
+Providers are discovered automatically and reconnect when their apps restart. None of these requests consume model tokens.
+
+## Features
+
+- **Menu bar summary.** Each provider's lowest remaining limit is shown side by side (for example `78% · 90% · 4%`), so a fresh 5-hour window can't hide an exhausted weekly one. Two thin bars beside each figure show the 5-hour (top) and weekly (bottom) limits. ⚠︎ marks anything at 10% or below. Switch to **Icon Only** for a quieter menu bar.
+- **Detailed popover.** One tab per provider with every limit, its reset time and account details. A status pill shows how fresh the numbers are and turns amber after several missed refreshes.
+- **Low-quota alerts.** Notifications when a 5-hour or weekly limit falls past 30% and 10%, and when it resets. Alerts fire only during active use, never for quota that was already low at launch.
+- **Token activity.** 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs.
+- **Blackout.** Turns every display black and puts it to sleep while your agents keep working, then ends on the first key press, click or mouse move.
+- **Native design.** SwiftUI with translucent materials that follows macOS's Reduce Transparency setting. The popover keeps a fixed height, so switching providers never resizes it.
+- **Launch at login**, a configurable refresh interval, and **Hide Email Addresses** for screenshots and screen sharing.
+
+## Usage
+
+### Menu bar
+
+| Action | Result |
 | :--- | :--- |
-| 🎛️ **Flexible Provider Focus** | Toggle any combination of active models (Antigravity, ChatGPT, Claude) with persistent in-menu checkboxes and an in-popover filter slider. |
-| 📊 **Menu Bar Telemetry** | Shows each provider's **lowest** remaining limit side by side (e.g. `78% · 90% · 4%`), so a full 5-hour window can't hide an exhausted weekly one. Two thin bars beside each figure show the 5-hour (top) and weekly (bottom) limits, with the one behind the figure drawn solid. A ⚠︎ marks anything at 10% or below, providers that are off are dimmed, and the hover tooltip breaks down every window. Prefer a quieter bar? Switch to **Icon Only**. |
-| 🔔 **Low-Quota Alerts** | Notifies you when a 5-hour or weekly limit drops past 30% and 10%, including when it resets. Alerts only fire on active use, never for quota that was already low at launch. Choose 30% and 10%, 10% only, or off. The first time you open the popover, a card offers to turn alerts on, so the macOS permission prompt only appears when you ask for it. If notifications are later blocked, the popover says so and links straight to the setting. |
-| 📈 **Token Activity** | 7, 14 or 30-day charts of Claude Code and Codex token use, read from local session logs (desktop app and CLI). |
-| 🪟 **macOS 27 Liquid Glass** | Native `.ultraThinMaterial` substrate, specular rim refraction gradients and viscous spring mechanics. The popover keeps a fixed height (shrinking on small screens), so switching providers never resizes it; when a page runs longer, the bottom edge fades and a chevron scrolls you to the rest. |
-| 🔒 **Private by Design** | Zero telemetry, zero LLM prompts consumed, and no credentials saved. Antigravity and ChatGPT are read locally; Claude usage is fetched from Anthropic's own usage endpoints using your existing sign-in. |
-| 🔄 **Auto-Discovery & Recovery** | Automatically detects running desktop instances and seamlessly reconnects whenever any AI application is launched or restarted. |
+| Click | Opens or closes the popover. |
+| Right-click or Control-click | Opens the menu with settings and actions. |
+| Hover | Shows a tooltip with every limit and its reset time. |
+| Option-click a provider in **Provider Focus** | Shows only that provider. |
 
----
+### Popover header
 
-## 🛠️ Building from Source
+| Control | Action |
+| :--- | :--- |
+| Provider tabs | Switch between providers. Each tab shows its menu bar figure, labelled "weekly" when it comes from the weekly limit. |
+| Filter (`slider.horizontal.3`) | Choose which providers are shown. |
+| Refresh (`arrow.clockwise`) | Rediscovers providers and fetches quotas now. |
+| Update (`arrow.down`) | Appears when a new release is available. |
+| More (`ellipsis`) | Refresh interval, alerts, menu bar style, Hide Email Addresses, Launch at Login, Check for Updates and Quit. |
+
+A small menu bar glyph beside a limit marks the figure the menu bar is showing.
+
+### Menu commands
+
+| Shortcut | Command |
+| :---: | :--- |
+| <kbd>⌘</kbd><kbd>R</kbd> | Refresh All Now |
+| <kbd>⌘</kbd><kbd>B</kbd> | Blackout |
+| <kbd>⌘</kbd><kbd>U</kbd> | Check for Updates… |
+| <kbd>⌘</kbd><kbd>Q</kbd> | Quit AIUsage |
+
+The same menu sets **Provider Focus**, the **Refresh Interval** (30 seconds, 1, 2 or 5 minutes, or manual), the **Menu Bar** style, **Low-Quota Alerts** (at 30% and 10%, at 10% only, or off), **Launch at Login** and **Hide Email Addresses**.
+
+## Privacy
+
+AIUsage has no telemetry, analytics or LLM calls. It only talks to:
+
+| Destination | Purpose |
+| :--- | :--- |
+| `127.0.0.1` | Antigravity's local language server |
+| Codex `app-server` (local subprocess) | ChatGPT limits, fetched by Codex with your existing sign-in |
+| `claude.ai`, `api.anthropic.com` | Claude's read-only usage endpoints, using your existing Claude desktop or Claude Code sign-in |
+| `api.github.com`, `github.com` | Checking for and downloading AIUsage updates |
+
+Token activity charts are built from local files only (`~/.claude/projects` and `~/.codex/sessions`). Credentials are read from your Keychain or cookie store when needed and are never saved, logged or sent anywhere except the provider they belong to. CI enforces this list with [`scripts/check_network_policy.sh`](scripts/check_network_policy.sh).
+
+## Building from source
+
+Requires Xcode command line tools with Swift 5.9 or later.
 
 ```bash
-# Clone the repository
 git clone https://github.com/desmondlee95700/AIUsage.git
 cd AIUsage
 
-# Build and package the .app bundle
-./scripts/build_app.sh
+swift build              # compile
+swift test               # run the unit tests
+./scripts/build_app.sh   # package AIUsage.app
+./scripts/build_dmg.sh   # build a distributable DMG
 
-# Or create a distributable compressed DMG
-./scripts/build_dmg.sh
-
-# Launch the app
 open AIUsage.app
 ```
 
----
+## Contributing
 
-## ⚙️ Controls & Shortcuts
+Issues and pull requests are welcome.
 
-### 🖱️ Mouse & Menu Bar Gestures
+- Open pull requests from a feature branch or fork. CI must pass: build, tests and the network policy check.
+- Use [Conventional Commits](https://www.conventionalcommits.org) for PR titles (`feat:`, `fix(scope):`, `docs:` …); they become the release notes.
+- Don't bump version numbers. Releases are cut by the maintainer.
+- Changes that add network destinations, telemetry or LLM calls won't be accepted. See [Privacy](#privacy).
 
-| Gesture | Target | Action |
-| :--- | :--- | :--- |
-| **Left-Click** | Menu Bar Item | Opens or dismisses the Liquid Glass quota inspector popover. |
-| **Right-Click** / **Control-Click** | Menu Bar Item | Opens the full macOS context menu with quick settings and actions. |
-| **Hover** | Menu Bar Item | Displays a multi-model tool tip with every limit, its reset time, and what to do when a provider is offline. |
-| **Option (⌥) + Click** | Provider Item | Solo Mode: Instantly selects only that provider in the focus menu. |
+[`AGENTS.md`](AGENTS.md) covers the architecture and design guidelines in more detail.
 
-<br />
+## License
 
-### 🎛️ Popover Header Controls
-
-| Control | Icon | Action |
-| :--- | :---: | :--- |
-| **Provider Filter** | `slider.horizontal.3` | Opens multi-select popover to toggle active providers without closing the menu. |
-| **Provider Switcher** | Segment Tabs | Toggles provider dashboards (Antigravity, ChatGPT, Claude) with zero height shift. Each tab shows the menu bar figure, marked "weekly" when it comes from the weekly limit. |
-| **Freshness** | Status Pill | How old the numbers on screen are; turns amber when they've missed several refreshes. |
-| **Refresh Quotas** | `arrow.clockwise` (🔄) | Runs spring-animated icon spin and forces local service re-discovery and quota poll. |
-| **Update Available** | `arrow.down` (⬇️) | Dynamic badge that appears when a new GitHub release is detected; 1-click prompts download. |
-| **More** | `ellipsis` (⋯) | Grouped settings: refresh interval and low-quota alerts; menu bar style and Hide Email Addresses; Launch at Login and Open App; then Check for Updates and Quit. The app version sits under the AIUsage name in the header. |
-
-A small menu bar glyph (`menubar.rectangle`) beside a limit marks the figure your menu bar is showing.
-
-<br />
-
-### ⌨️ Context Menu & Keyboard Shortcuts
-
-| Shortcut | Command | Action |
-| :---: | :--- | :--- |
-| <kbd>⌘</kbd> <kbd>R</kbd> | **Refresh All Now** | Forces immediate re-probe and quota fetch across all active providers. |
-| <kbd>⌘</kbd> <kbd>U</kbd> | **Check for Updates...** | Checks GitHub Releases for new DMG builds and prompts direct download. |
-| <kbd>⌘</kbd> <kbd>Q</kbd> | **Quit AIUsage** | Terminates the application. |
-| — | **Provider Focus** | Persistent multi-choice submenu with individual provider checkmarks. |
-| — | **Refresh Interval** | Configure automatic polling cadence (30s, 1m, 2m, 5m, or Manual). |
-| — | **Menu Bar** | Show Percentages, or Icon Only. |
-| — | **Low-Quota Alerts** | At 30% and 10% (default), at 10% only, or off, plus whether notifications are allowed and a one-click fix if not. |
-| — | **Launch at Login** | Starts AIUsage automatically when you log in (macOS Login Items). |
-| — | **Hide Email Addresses** | Masks account emails in the popover, for screenshots and screen sharing. |
-
----
-
-## 📄 License
-
-This project is licensed under the **[MIT License](LICENSE)** &mdash; see the [`LICENSE`](LICENSE) file for complete details.
-
-Copyright &copy; 2026 [Desmond Lee](https://github.com/desmondlee95700). Free and open-source software for personal and commercial use.
+Released under the [MIT License](LICENSE). Copyright © 2026 [Desmond Lee](https://github.com/desmondlee95700).
