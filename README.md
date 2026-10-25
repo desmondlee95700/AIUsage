@@ -49,6 +49,12 @@ Download the latest pre-compiled macOS disk image:
 > ```
 > *(Or navigate to **System Settings > Privacy & Security**, scroll down to **Security**, and click **Open Anyway**.)*
 
+### Option 2: Homebrew
+```bash
+brew install --cask desmondlee95700/tap/aiusage
+```
+The cask tracks the latest stable release. AIUsage updates itself, or run `brew upgrade --cask aiusage`. The Gatekeeper notice above applies on first launch too.
+
 ---
 
 ## ✨ Features

@@ -90,3 +90,33 @@ jobs:
           # Pre-release tags (v2.2.0-beta.1) are hidden from /releases/latest, which the in-app updater uses
           [[ "$TAG" == *-* ]] && ARGS+=(--prerelease)
           gh release create "${ARGS[@]}"
+
+      - name: Update Homebrew tap
+        # Stable releases only, matching /releases/latest; runs on re-publishes too so a missed bump can be retried
+        if: ${{ !contains(env.TAG, '-') }}
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [[ -z "$TAP_TOKEN" ]]; then
+            echo "::warning::TAP_TOKEN is not set; skipping the Homebrew tap update"; exit 0
+          fi
+          VERSION="${TAG#v}"
+          SHA=$(gh release download "$TAG" -p SHA256SUMS -O - | awk -v f="AIUsage-$TAG.dmg" '$2 == f { print $1 }')
+          if [[ -z "$SHA" ]]; then
+            echo "::error::SHA256SUMS for $TAG has no entry for AIUsage-$TAG.dmg"; exit 1
+          fi
+
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/desmondlee95700/homebrew-tap.git" homebrew-tap
+          cd homebrew-tap
+          # Never move the cask backwards when an older tag is re-published
+          CURRENT=$(grep -m1 '^  version "' Casks/aiusage.rb | cut -d'"' -f2)
+          if [[ "$(printf '%s\n' "$CURRENT" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]]; then
+            echo "Cask is at $CURRENT, newer than $VERSION; leaving it"; exit 0
+          fi
+          sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/aiusage.rb
+          if git diff --quiet; then
+            echo "Cask already at $VERSION"; exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -am "aiusage $VERSION"
+          git push
