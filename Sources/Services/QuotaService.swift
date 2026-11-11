@@ -60,7 +60,12 @@ public class QuotaService: ObservableObject {
     @Published public var isConsumingReset: Bool = false
     @Published public var resetActionMessage: String?
     @Published public var resetActionIsSuccess: Bool = false
-    
+
+    // Claude Limit Reset State
+    @Published public var redeemingClaudeResetId: String?
+    @Published public var claudeResetMessage: String?
+    @Published public var claudeResetIsSuccess: Bool = false
+
     // Low Quota Alert Tracking (tracks 30% and 10% thresholds per provider upon active quota drop)
     private var alertTracker = QuotaAlertTracker()
     
@@ -533,6 +538,28 @@ public class QuotaService: ObservableObject {
         }
     }
     
+    /// Spends one of Claude's free limit resets after the user confirms it in the popover.
+    public func redeemClaudeReset(_ grant: ClaudeResetGrant) {
+        guard redeemingClaudeResetId == nil else { return }
+        redeemingClaudeResetId = grant.id
+        claudeResetMessage = nil
+
+        Task {
+            do {
+                let outcome = try await ClaudeService.shared.redeemReset(grantId: grant.id)
+                claudeResetIsSuccess = outcome.isSuccess
+                claudeResetMessage = outcome.userMessage
+            } catch {
+                claudeResetIsSuccess = false
+                claudeResetMessage = error.localizedDescription
+            }
+            // Refresh either way: a failed claim may still have applied, and the list shows what's left
+            await refreshClaude()
+            redeemingClaudeResetId = nil
+            updateMenuBarCallback?()
+        }
+    }
+
     // MARK: - Antigravity Connect-RPC
     
     /// POSTs an empty request to a LanguageServerService method on the local Antigravity server.

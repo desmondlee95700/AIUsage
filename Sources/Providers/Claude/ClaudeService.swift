@@ -12,11 +12,21 @@ public actor ClaudeService {
     
     private let session: URLSession
     
+    /// Claiming a reset is slower than a usage read; Claude Code allows it 25 seconds.
+    private let resetSession: URLSession
+    
+    static let browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
     private init() {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 4.0
         config.timeoutIntervalForResource = 6.0
         self.session = URLSession(configuration: config)
+        
+        let resetConfig = URLSessionConfiguration.ephemeral
+        resetConfig.timeoutIntervalForRequest = 25.0
+        resetConfig.timeoutIntervalForResource = 30.0
+        self.resetSession = URLSession(configuration: resetConfig)
     }
     
     public struct ClaudeState: Sendable {
@@ -93,7 +103,7 @@ public actor ClaudeService {
         let orgsUrl = URL(string: "https://claude.ai/api/organizations")!
         var orgsReq = URLRequest(url: orgsUrl)
         orgsReq.setValue("sessionKey=" + sessionKey, forHTTPHeaderField: "Cookie")
-        orgsReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        orgsReq.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
         
         // An expired session returns an error object rather than a list, so this falls through to the CLI path
         guard let orgsData = await send(orgsReq)?.data,
@@ -143,10 +153,10 @@ public actor ClaudeService {
             return ClaudeState(account: account, limits: nil, isConnected: true)
         }
         
-        let usageUrl = URL(string: "https://claude.ai/api/organizations/\(orgUuid)/usage")!
+        let usageUrl = URL(string: "https://claude.ai/api/organizations/\(orgUuid)/usage" + Self.usageQuery)!
         var usageReq = URLRequest(url: usageUrl)
         usageReq.setValue("sessionKey=" + sessionKey, forHTTPHeaderField: "Cookie")
-        usageReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        usageReq.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
         
         let usage = await send(usageReq)
         let fetchedLimits = usage?.response.statusCode == 200 ? Self.parseUsageLimits(usage?.data) : nil
@@ -155,12 +165,143 @@ public actor ClaudeService {
             desktopRetryAfter = Date().addingTimeInterval(backoff)
         } else if fetchedLimits != nil {
             desktopRetryAfter = nextPacedRequest(after: requestStart)
+            resetSource = .desktop(organization: orgUuid)
         }
         
         // A transient usage failure shouldn't make a paid plan look like the free tier
         return ClaudeState(account: account, limits: rememberLimits(fetchedLimits), isConnected: true)
     }
     
+    // MARK: - Redeem a Limit Reset
+
+    enum ResetSource: Equatable {
+        /// claude.ai with the desktop session cookie
+        case desktop(organization: String)
+        /// api.anthropic.com with the Claude Code OAuth token
+        case oauth(organization: String)
+    }
+
+    public enum ResetOutcome: Equatable, Sendable {
+        case reset(resetsLeft: Int?)
+        case alreadyUsed
+        case notLimited
+        case cooldown(until: Date?)
+        case ineligible
+        case unavailable
+
+        public var isSuccess: Bool {
+            if case .reset = self { return true }
+            return false
+        }
+
+        public var userMessage: String {
+            switch self {
+            case .reset:
+                return "Reset applied. Your limits have been refilled."
+            case .alreadyUsed:
+                return "This reset has already been used."
+            case .notLimited:
+                return "Nothing to reset yet: this reset works once you've hit a limit."
+            case .cooldown(let until):
+                let wait = until.flatMap { DateParsing.countdown(until: $0) }.map { " Try again in \($0)." } ?? " Try again later."
+                return "Resets are cooling down after a recent one." + wait
+            case .ineligible:
+                return "This account can't use limit resets right now."
+            case .unavailable:
+                return "This reset isn't available right now."
+            }
+        }
+    }
+
+    /// Parses the reset endpoint's reply; unknown results read as unavailable, as Claude Code treats them.
+    static func parseResetOutcome(_ data: Data) -> ResetOutcome? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        switch json["result"] as? String {
+        case "reset": return .reset(resetsLeft: json["resets_left"] as? Int)
+        case "already_used": return .alreadyUsed
+        case "not_limited": return .notLimited
+        case "cooldown": return .cooldown(until: parseDate(json["cooldown_until"]))
+        case "ineligible": return .ineligible
+        default: return .unavailable
+        }
+    }
+
+    /// Body Claude Code sends to claim a reset. `request_id` lets the server recognise a repeated claim.
+    static func resetRequestBody(grantId: String, requestId: String) -> Data? {
+        try? JSONSerialization.data(withJSONObject: [
+            "program": "cedar_ember",
+            "grant_id": grantId,
+            "request_id": requestId
+        ])
+    }
+
+    /// Spends one free limit reset, sent to whichever source last returned usage. The only write
+    /// request AIUsage makes to Claude, and only ever from the user's confirmed tap (AGENTS.md §6.3).
+    public func redeemReset(grantId: String) async throws -> ResetOutcome {
+        guard Self.isValidGrantId(grantId) else { throw Self.resetError("This reset couldn't be read. Refresh and try again.") }
+        guard let source = resetSource else { throw Self.resetError("Claude isn't connected. Refresh and try again.") }
+
+        let organization: String
+        var request: URLRequest
+        switch source {
+        case .desktop(let org), .oauth(let org):
+            organization = org
+        }
+        guard UUID(uuidString: organization) != nil else { throw Self.resetError("Claude organization not found. Refresh and try again.") }
+
+        switch source {
+        case .desktop:
+            let sessionKey = await runBlocking { () -> String? in
+                guard let key = ClaudeKeyChainHelper.getSafeStorageKey() else { return nil }
+                return ClaudeKeyChainHelper.getCookie(name: "sessionKey", key: key)
+            }
+            guard let sessionKey = sessionKey else { throw Self.resetError("Claude's sign-in wasn't found. Open Claude and try again.") }
+            request = URLRequest(url: URL(string: "https://claude.ai/api/organizations/\(organization)/reset_rate_limits")!)
+            request.setValue("sessionKey=" + sessionKey, forHTTPHeaderField: "Cookie")
+            request.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        case .oauth:
+            guard let token = await runBlocking({ ClaudeKeyChainHelper.getClaudeCodeOAuthToken() }) else {
+                throw Self.resetError("Claude Code's sign-in has expired. Open Claude Code and try again.")
+            }
+            request = URLRequest(url: URL(string: "https://api.anthropic.com/api/organizations/\(organization)/reset_rate_limits")!)
+            request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+            request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        }
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.resetRequestBody(grantId: grantId, requestId: UUID().uuidString.lowercased())
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await resetSession.data(for: request)
+        } catch {
+            throw Self.resetError("Couldn't reach Claude. Check whether the reset applied before trying again.")
+        }
+        guard let http = response as? HTTPURLResponse else { throw Self.resetError("Claude sent an unexpected reply.") }
+        switch http.statusCode {
+        case 200:
+            guard let outcome = Self.parseResetOutcome(data) else { throw Self.resetError("Claude sent an unexpected reply.") }
+            if outcome.isSuccess {
+                // Let the refresh that follows read the new limits instead of the paced cache
+                desktopRetryAfter = .distantPast
+                oauthRetryAfter = .distantPast
+            }
+            return outcome
+        case 401, 403:
+            if case .oauth = source { ClaudeKeyChainHelper.invalidateClaudeCodeToken() }
+            throw Self.resetError("Claude rejected the sign-in. Open Claude and try again.")
+        case 429:
+            throw Self.resetError("Claude is limiting requests. Try again in a minute.")
+        default:
+            throw Self.resetError("The reset request failed (HTTP \(http.statusCode)).")
+        }
+    }
+
+    private static func resetError(_ message: String) -> NSError {
+        NSError(domain: "ClaudeService", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
     // MARK: - Fallback Claude CLI ~/.claude.json
     
     private func fetchFromClaudeJson() async -> ClaudeState? {
@@ -197,6 +338,7 @@ public actor ClaudeService {
             subscriptionCreatedAt: createdAt
         )
         
+        lastOAuthOrganization = organizationUuid
         return ClaudeState(account: account, limits: await fetchUsageWithOAuth(), isConnected: true)
     }
     
@@ -235,11 +377,55 @@ public actor ClaudeService {
             extraUsagePercent: extraEnabled ? remaining(extraObj?["utilization"] as? Double) : nil,
             hasFiveHourWindow: fhObj != nil,
             hasWeeklyWindow: sdObj != nil,
+            resetGrants: parseResetGrants(usage["cedar_ember"]),
+            scopedModelName: parseScopedModelName(usage["limits"]),
             lastUpdated: Date()
         )
     }
+
+    /// Query that adds the `cedar_ember` block (free limit resets) to a usage response, as Claude Code requests it.
+    static let usageQuery = "?cedar_ember=1"
+
+    /// Grant ids the reset endpoint accepts (the same check Claude Code applies before claiming).
+    static func isValidGrantId(_ id: String) -> Bool {
+        id.range(of: "^[a-z0-9_-]{1,40}$", options: .regularExpression) != nil
+    }
+
+    /// Reset grants from the `cedar_ember` block; empty when the account isn't eligible or the block is missing.
+    static func parseResetGrants(_ block: Any?) -> [ClaudeResetGrant] {
+        guard let block = block as? [String: Any],
+              (block["eligible"] as? Bool) == true,
+              let grants = block["grants"] as? [[String: Any]] else { return [] }
+        return grants.compactMap { grant in
+            guard let id = grant["id"] as? String, isValidGrantId(id),
+                  let resetsLeft = grant["resets_left"] as? Int else { return nil }
+            return ClaudeResetGrant(
+                id: id,
+                label: grant["label"] as? String ?? "",
+                resetsLeft: resetsLeft,
+                expiresAt: parseDate(grant["ends_at"]),
+                clears: grant["clears"] as? [String] ?? [],
+                givesBackWeekly: grant["gives_back_weekly"] as? Bool ?? false,
+                usableNow: (grant["usable_now"] as? Bool ?? false) && !(grant["paused"] as? Bool ?? false),
+                unavailableReason: grant["unavailable_reason"] as? String
+            )
+        }
+    }
+
+    /// Display name of the model with its own weekly allowance (the `weekly_scoped` entry in `limits`).
+    static func parseScopedModelName(_ limits: Any?) -> String? {
+        guard let limits = limits as? [[String: Any]],
+              let scoped = limits.first(where: { $0["kind"] as? String == "weekly_scoped" }),
+              let model = (scoped["scope"] as? [String: Any])?["model"] as? [String: Any],
+              let name = model["display_name"] as? String, !name.isEmpty else { return nil }
+        return name
+    }
     
     private var oauthRetryAfter = Date.distantPast
+    /// Organization from ~/.claude.json, used to redeem resets through the OAuth source.
+    private var lastOAuthOrganization: String?
+    /// Source of the last successful usage read, which is also where a reset is redeemed.
+    private var resetSource: ResetSource?
     private var desktopRetryAfter = Date.distantPast
     /// Account from the last successful claude.ai organizations request, reused while paced.
     private var lastDesktopAccount: ClaudeAccountInfo?
@@ -270,6 +456,7 @@ public actor ClaudeService {
             fresh = await requestUsage()
             if fresh != nil {
                 oauthRetryAfter = nextPacedRequest(after: requestStart)
+                resetSource = lastOAuthOrganization.map { .oauth(organization: $0) }
             }
         }
         return rememberLimits(fresh)
@@ -288,7 +475,7 @@ public actor ClaudeService {
     private func requestUsage() async -> ClaudeUsageLimits? {
         // Runs /usr/bin/security, so keep it off the cooperative pool
         guard let token = await runBlocking({ ClaudeKeyChainHelper.getClaudeCodeOAuthToken() }) else { return nil }
-        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage" + Self.usageQuery)!)
         req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         

@@ -82,7 +82,7 @@ To uninstall, quit AIUsage and move it to the Trash, or run `brew uninstall --ca
 | :--- | :--- | :--- | :--- |
 | <img src="Assets/AntigravityIcon.png" width="16" height="16" /> **Google Antigravity** | 5-hour and weekly limits, prompt and flow credits, account tier and email | Antigravity's local language server (`127.0.0.1`) | Antigravity running |
 | <img src="Assets/ChatGPTIcon.png" width="16" height="16" /> **ChatGPT** | 5-hour and weekly limits, reset credits, plan and email | Codex `app-server` over stdio | ChatGPT desktop app (bundles Codex) or the Codex CLI, signed in |
-| <img src="Assets/ClaudeIcon.png" width="16" height="16" /> **Claude** | 5-hour and weekly limits, Sonnet and Opus weekly limits where the plan has them, extra usage credits, plan and email | Claude's read-only usage endpoints | Claude desktop app or Claude Code, signed in |
+| <img src="Assets/ClaudeIcon.png" width="16" height="16" /> **Claude** | 5-hour and weekly limits, Sonnet and Opus weekly limits where the plan has them, free limit resets, extra usage credits, plan and email | Claude's usage endpoints | Claude desktop app or Claude Code, signed in |
 
 Providers are discovered automatically and reconnect when their apps restart.
 
@@ -141,7 +141,7 @@ AIUsage has no telemetry, analytics or LLM calls. It only talks to:
 | :--- | :--- |
 | `127.0.0.1` | Antigravity's local language server |
 | Codex `app-server` (local subprocess) | ChatGPT limits, fetched by Codex with your existing sign-in |
-| `claude.ai`, `api.anthropic.com` | Claude's read-only usage endpoints, using your existing Claude desktop or Claude Code sign-in |
+| `claude.ai`, `api.anthropic.com` | Claude's usage endpoints, using your existing Claude desktop or Claude Code sign-in. The only write is redeeming a free limit reset when you press **Use reset** and confirm. |
 | `api.github.com`, `github.com` | Checking for and downloading AIUsage updates |
 
 Token activity charts are built from local files only (`~/.claude/projects` and `~/.codex/sessions`). Credentials are read from your Keychain or cookie store when needed and are never saved, logged or sent anywhere except the provider they belong to. CI enforces this list with [`scripts/check_network_policy.sh`](scripts/check_network_policy.sh).

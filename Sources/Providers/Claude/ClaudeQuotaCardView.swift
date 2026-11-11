@@ -5,6 +5,9 @@ public struct ClaudeQuotaCardView: View {
     public let limits: ClaudeUsageLimits?
     @ObservedObject var service: QuotaService
     
+    /// Reset awaiting confirmation in the alert.
+    @State private var pendingReset: ClaudeResetGrant?
+    
     public init(
         account: ClaudeAccountInfo?,
         limits: ClaudeUsageLimits?,
@@ -86,6 +89,10 @@ public struct ClaudeQuotaCardView: View {
             
             quotaSection
             
+            if let limits = limits, !limits.availableResets().isEmpty || service.claudeResetMessage != nil {
+                resetsSection(limits: limits)
+            }
+            
             // Reported by the usage endpoint only while extra usage is turned on
             if let extra = limits?.extraUsagePercent {
                 extraUsageSection(remainingPercent: extra)
@@ -95,6 +102,25 @@ public struct ClaudeQuotaCardView: View {
                 TokenActivityCardView(title: "Claude Activity", activity: activity, tint: tint)
             }
         }
+        .alert(item: $pendingReset) { grant in
+            Alert(
+                title: Text("Use \(grant.title(scopedModel: limits?.scopedModelName))?"),
+                message: Text(resetConfirmationMessage(for: grant)),
+                primaryButton: .default(Text("Use Reset")) {
+                    service.redeemClaudeReset(grant)
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+    
+    /// Says what's left right now, so a reset isn't spent on limits that are nearly full.
+    private func resetConfirmationMessage(for grant: ClaudeResetGrant) -> String {
+        var levels: [String] = []
+        if let fiveHour = limits?.fiveHourPercent { levels.append("\(fiveHour)% of your 5-hour limit") }
+        if let weekly = limits?.weeklyPercent { levels.append("\(weekly)% of your weekly limit") }
+        let current = levels.isEmpty ? "" : "You have \(levels.joined(separator: " and ")) left.\n\n"
+        return current + grant.summary(scopedModel: limits?.scopedModelName) + " This can't be undone."
     }
     
     // MARK: - Quota Section
@@ -167,6 +193,101 @@ public struct ClaudeQuotaCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
+    }
+    
+    // MARK: - Limit Resets Section
+    
+    private func resetsSection(limits: ClaudeUsageLimits) -> some View {
+        // Re-render periodically so the expiry countdowns tick between refreshes
+        TimelineView(.periodic(from: .now, by: LiquidGlassTokens.countdownTick)) { context in
+            let resets = limits.availableResets(now: context.date)
+            let count = resets.reduce(0) { $0 + $1.resetsLeft }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                GlassSectionHeader("Limit Resets", systemImage: "arrow.counterclockwise", tint: tint) {
+                    if count > 0 {
+                        GlassChip("\(count) available", tint: tint)
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    if !resets.isEmpty {
+                        Text("Free resets from Claude. Each one expires, so use it before it lapses.")
+                            .font(.system(size: 11))
+                            .foregroundColor(LiquidGlassText.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        VStack(spacing: 6) {
+                            ForEach(resets) { grant in
+                                resetItem(grant, scopedModel: limits.scopedModelName)
+                            }
+                        }
+                    }
+                    
+                    if let message = service.claudeResetMessage {
+                        let color = service.claudeResetIsSuccess ? LiquidGlassPalette.healthy : LiquidGlassPalette.moderate
+                        HStack(alignment: .top, spacing: 5) {
+                            Image(systemName: service.claudeResetIsSuccess ? "checkmark.circle.fill" : "info.circle.fill")
+                                .font(.system(size: 11))
+                            Text(message)
+                                .font(.system(size: 11, weight: .medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundColor(color)
+                    }
+                }
+                .padding(14)
+                .liquidGlassCard(cornerRadius: 16, tint: tint, material: .thinMaterial)
+            }
+        }
+    }
+    
+    private func resetItem(_ grant: ClaudeResetGrant, scopedModel: String?) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "ticket.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(tint.opacity(0.16)))
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(grant.title(scopedModel: scopedModel))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(LiquidGlassText.primary)
+                Text(grant.unavailableMessage ?? grant.formattedExpiration)
+                    .font(.system(size: 10.5))
+                    .foregroundColor(grant.unavailableMessage == nil ? LiquidGlassText.tertiary : LiquidGlassPalette.moderate)
+                    .help(grant.expiresAt.map { "Expires " + DateParsing.exact($0) } ?? "")
+                Text(grant.summary(scopedModel: scopedModel))
+                    .font(.system(size: 10.5))
+                    .foregroundColor(LiquidGlassText.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .help(grant.label)
+            
+            Spacer(minLength: 6)
+            
+            if service.redeemingClaudeResetId == grant.id {
+                ProgressView()
+                    .scaleEffect(0.55)
+                    .frame(width: 78, height: 24)
+            } else if grant.usableNow {
+                GlassCapsuleButton("Use reset", style: .prominent(tint), size: .small) {
+                    pendingReset = grant
+                }
+                .disabled(service.redeemingClaudeResetId != nil)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.8)
+        )
     }
     
     // MARK: - Extra Usage Section

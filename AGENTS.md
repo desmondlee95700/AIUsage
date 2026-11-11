@@ -10,7 +10,7 @@ Welcome to the **AIUsage** codebase. This document outlines architectural standa
 
 **AIUsage** is a native macOS menu bar application designed for instant, real-time tracking of AI model quotas, subscription tiers, and credit balances.
 
-- **Zero Token Overhead**: Reads quota data without consuming tokens: local loopback Connect-RPC (`127.0.0.1`) for Antigravity, the bundled Codex CLI subprocess for ChatGPT, and the provider's own read-only usage endpoints for Claude (see §6.3 for the full list of allowed network calls). **Never introduce LLM inference calls or telemetry.**
+- **Zero Token Overhead**: Reads quota data without consuming tokens: local loopback Connect-RPC (`127.0.0.1`) for Antigravity, the bundled Codex CLI subprocess for ChatGPT, and the provider's own usage endpoints for Claude (see §6.3 for the full list of allowed network calls). **Never introduce LLM inference calls or telemetry.**
 - **Native macOS Experience**: Implemented entirely in Swift and SwiftUI, targeting macOS 13+ (the `Package.swift` and Info.plist deployment target) with full forward-compatibility for macOS 27 design standards.
 - **Minimal Footprint**: Operates with near-zero idle CPU and memory utilization.
 
@@ -156,6 +156,7 @@ To maintain codebase stability, security, and strict quality control:
      - **Antigravity**: local loopback Connect-RPC (`127.0.0.1`).
      - **ChatGPT**: the bundled Codex CLI `app-server` subprocess.
      - **Claude**: read-only usage endpoints on `claude.ai` (using the Claude desktop session cookie) and `api.anthropic.com/api/oauth/usage` (using the Claude Code OAuth token).
+       - One write is allowed on the same hosts: `POST /api/organizations/{org}/reset_rate_limits`, which spends one of the user's free limit resets. It is only ever sent from the user's confirmed tap in the popover, never automatically (mirrors the Codex reset credit, which goes through the Codex CLI).
      - **Token activity**: local session logs only (`~/.claude/projects`, `~/.codex/sessions`); file reads, no network.
      - **Updates**: the GitHub Releases API for this repository (`api.github.com`), and the release DMG download (`github.com`, redirecting to `release-assets.githubusercontent.com`). `UpdateService` refuses download URLs outside this repository's releases and redirects to any other host.
      - **Browser links** (opened in the user's browser, no data requests): `claude.ai`, `chatgpt.com`.
