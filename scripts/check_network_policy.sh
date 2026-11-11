@@ -11,8 +11,8 @@ cd "$DIR"
 
 ALLOWED_HOSTS=(
     "127.0.0.1"          # Antigravity loopback Connect-RPC
-    "claude.ai"          # Claude usage endpoints (desktop session) + browser fallback link
-    "api.anthropic.com"  # Claude Code OAuth usage endpoint
+    "claude.ai"          # Claude usage endpoints (desktop session), user-confirmed reset redeem + browser fallback link
+    "api.anthropic.com"  # Claude Code OAuth usage endpoint + user-confirmed reset redeem
     "api.github.com"     # In-app update check
     "github.com"         # Update DMG download link (release assets of this repo only)
     "release-assets.githubusercontent.com"  # CDN that GitHub redirects release downloads to

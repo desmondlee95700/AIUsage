@@ -83,7 +83,12 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     /// Whether the server reported each window. When false, the matching percentages are placeholders.
     public let hasFiveHourWindow: Bool
     public let hasWeeklyWindow: Bool
-    
+
+    /// Free limit resets the account can still use (claude.ai's "Limit resets").
+    public let resetGrants: [ClaudeResetGrant]
+    /// Model with its own weekly allowance ("Fable"), named in reset descriptions.
+    public let scopedModelName: String?
+
     public let lastUpdated: Date?
     
     public init(
@@ -100,6 +105,8 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
         extraUsagePercent: Int? = nil,
         hasFiveHourWindow: Bool = true,
         hasWeeklyWindow: Bool = true,
+        resetGrants: [ClaudeResetGrant] = [],
+        scopedModelName: String? = nil,
         lastUpdated: Date? = nil
     ) {
         self.fiveHourRemainingPercent = fiveHourRemainingPercent
@@ -115,7 +122,16 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
         self.extraUsagePercent = extraUsagePercent
         self.hasFiveHourWindow = hasFiveHourWindow
         self.hasWeeklyWindow = hasWeeklyWindow
+        self.resetGrants = resetGrants
+        self.scopedModelName = scopedModelName
         self.lastUpdated = lastUpdated
+    }
+
+    /// Resets that are left and haven't expired, soonest expiry first.
+    public func availableResets(now: Date = Date()) -> [ClaudeResetGrant] {
+        resetGrants
+            .filter { $0.resetsLeft > 0 && ($0.expiresAt.map { $0 > now } ?? true) }
+            .sorted { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
     }
     
     /// Remaining 5-hour percentage, or nil when the server didn't report that window.
@@ -159,5 +175,88 @@ public struct ClaudeUsageLimits: Codable, Equatable, Sendable {
     public func formattedModelCountdown(_ reset: Date?) -> String? {
         guard let reset = modelResetTime(reset) else { return "Weekly reset" }
         return DateParsing.countdown(until: reset).map { "Resets in \($0)" } ?? "Refreshed"
+    }
+}
+
+/// A free limit reset from claude.ai's "Limit resets" list, reported in the usage payload's
+/// `cedar_ember` block when it's requested with `?cedar_ember=1`.
+public struct ClaudeResetGrant: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    /// Server description, e.g. "One full limit reset (November 2026)".
+    public let label: String
+    public let resetsLeft: Int
+    public let expiresAt: Date?
+    /// Limits this reset refills: "five_hour", "seven_day", "seven_day_overage_included" (the model allowance).
+    public let clears: [String]
+    /// Returns what the scoped model used to the weekly limit, without resetting the whole week.
+    public let givesBackWeekly: Bool
+    public let usableNow: Bool
+    /// Why it can't be used now, e.g. "cooldown", "blocked_seven_day", "needs_limit".
+    public let unavailableReason: String?
+    
+    public init(
+        id: String,
+        label: String = "",
+        resetsLeft: Int = 1,
+        expiresAt: Date? = nil,
+        clears: [String] = [],
+        givesBackWeekly: Bool = false,
+        usableNow: Bool = true,
+        unavailableReason: String? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.resetsLeft = resetsLeft
+        self.expiresAt = expiresAt
+        self.clears = clears
+        self.givesBackWeekly = givesBackWeekly
+        self.usableNow = usableNow
+        self.unavailableReason = unavailableReason
+    }
+    
+    /// Refills the weekly limit as well as the 5-hour one.
+    public var isFullReset: Bool {
+        clears.contains("seven_day")
+    }
+    
+    public func title(scopedModel: String?) -> String {
+        if isFullReset { return "Full reset" }
+        if givesBackWeekly || clears.contains("seven_day_overage_included") {
+            return "\(scopedModel ?? "Model") reset"
+        }
+        return clears == ["five_hour"] ? "5-hour reset" : "Limit reset"
+    }
+    
+    /// What using it does, in a sentence.
+    public func summary(scopedModel: String?) -> String {
+        if isFullReset { return "Refills your 5-hour and weekly limits." }
+        let model = scopedModel ?? "model"
+        if givesBackWeekly {
+            return "Refills your 5-hour limit and \(model) allowance, and returns what \(model) used of your weekly limit. Your week doesn't reset."
+        }
+        if clears.contains("seven_day_overage_included") {
+            return "Refills your 5-hour limit and \(model) allowance."
+        }
+        return "Refills your 5-hour limit."
+    }
+    
+    public var formattedExpiration: String {
+        guard let expiresAt = expiresAt else { return "No expiry" }
+        return DateParsing.countdown(until: expiresAt).map { "Expires in \($0)" } ?? "Expired"
+    }
+    
+    /// Why the reset can't be used right now, or nil when it can.
+    public var unavailableMessage: String? {
+        guard !usableNow else { return nil }
+        switch unavailableReason {
+        case "cooldown": return "Cooling down after a recent reset"
+        case "blocked_five_hour": return "Usable once your 5-hour limit resets"
+        case "blocked_seven_day": return "Usable once your weekly limit resets"
+        case "blocked_opus": return "Usable once your Opus limit resets"
+        case "blocked_sonnet": return "Usable once your Sonnet limit resets"
+        case "needs_limit": return "Usable once you hit a limit"
+        case "cannot_clear": return "Nothing for it to refill right now"
+        default: return "Not available right now"
+        }
     }
 }
