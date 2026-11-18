@@ -17,6 +17,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
 </p>
 
+<p align="center">
+  <a href="https://youtu.be/BXCVoKdYVqA"><img src="Assets/LaunchFilm.jpg" alt="Watch the AIUsage launch film on YouTube" width="720" /></a>
+  <br />
+  <sub>▶ Watch the 44-second launch film on YouTube</sub>
+</p>
+
 ---
 
 ## Contents
