@@ -1,0 +1,12 @@
+{
+  "name": "aiusage-launch-film",
+  "private": true,
+  "type": "module",
+  "description": "AIUsage launch film: WebGL scene, synthesized soundtrack and frame-exact MP4 exporter",
+  "scripts": {
+    "render": "node render.mjs video AIUsage-launch.mp4 60"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

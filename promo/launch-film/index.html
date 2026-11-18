@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIUsage Launch Film</title>
+<style>
+  :root { --bg: #e9ecf6; --ink: #101326; --muted: rgba(16,19,38,.6); --chip: rgba(255,255,255,.7); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0d0f18; --ink: #eef0fa; --muted: rgba(238,240,250,.6); --chip: rgba(30,34,52,.8); } }
+  :root[data-theme="dark"] { --bg: #0d0f18; --ink: #eef0fa; --muted: rgba(238,240,250,.6); --chip: rgba(30,34,52,.8); }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, system-ui, sans-serif; }
+  body { display: grid; place-items: center; overflow: hidden; }
+  #stage { position: relative; width: min(100vw - 32px, (100vh - 96px) * 16 / 9); aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px rgba(20,30,80,.18); }
+  canvas { display: block; width: 100%; height: 100%; }
+  #bar { display: flex; gap: 12px; align-items: center; width: min(100vw - 32px, (100vh - 96px) * 16 / 9); margin-top: 14px; }
+  button { appearance: none; border: 0; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 8px 14px; font: 600 13px -apple-system, system-ui; cursor: pointer; }
+  input[type=range] { flex: 1; accent-color: #407afa; }
+  #time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 92px; text-align: right; }
+  #wrap { display: flex; flex-direction: column; align-items: center; }
+  body.render #bar { display: none; }
+  body.render { display: block; }
+  body.render #stage { width: 1920px; height: 1080px; border-radius: 0; box-shadow: none; }
+  #hint { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: #101326; font-weight: 600; opacity: .0; transition: opacity .3s; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage"><canvas id="c" width="1920" height="1080"></canvas></div>
+  <div id="bar">
+    <button id="play">Play with sound</button>
+    <input id="seek" type="range" min="0" max="44" step="0.01" value="0">
+    <span id="time">0.00 / 44.00</span>
+  </div>
+</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import { Film, DURATION } from './film.js';
+import { renderMusic, toWavBase64 } from './music.js';
+
+const render = new URLSearchParams(location.search).has('render');
+if (render) document.body.classList.add('render');
+const film = new Film(document.getElementById('c'));
+window.film = film;
+window.music = { async wav() { return toWavBase64(await renderMusic(48000)); } };
+await film.ready;
+const t0 = parseFloat(new URLSearchParams(location.search).get('t') || '0');
+film.renderAt(t0);
+window.filmReady = true;
+if (render) { /* driven frame by frame by the exporter */ }
+else {
+  const btn = document.getElementById('play'), seek = document.getElementById('seek'), time = document.getElementById('time');
+  let ac = null, buf = null, src = null, playing = false, startAt = 0, offset = t0, raf = 0;
+  const now = () => playing ? Math.min(DURATION, offset + (ac.currentTime - startAt)) : offset;
+  function frame() {
+    const t = now(); film.renderAt(t); seek.value = t; time.textContent = `${t.toFixed(2)} / ${DURATION.toFixed(2)}`;
+    if (playing && t >= DURATION) { stop(); offset = 0; }
+    raf = requestAnimationFrame(frame);
+  }
+  function stop() { if (src) { try { src.stop(); } catch {} src = null; } if (playing) offset = now(); playing = false; btn.textContent = 'Play with sound'; }
+  async function play() {
+    if (!ac) { ac = new AudioContext(); btn.textContent = 'Preparing sound…'; buf = await renderMusic(ac.sampleRate); }
+    if (offset >= DURATION - 0.05) offset = 0;
+    src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination);
+    startAt = ac.currentTime + 0.05; src.start(startAt, offset); playing = true; btn.textContent = 'Pause';
+  }
+  btn.onclick = () => playing ? stop() : play();
+  seek.oninput = () => { const was = playing; stop(); offset = parseFloat(seek.value); if (was) play(); };
+  addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); btn.click(); } });
+  frame();
+}
+</script>
+</body>
+</html>
